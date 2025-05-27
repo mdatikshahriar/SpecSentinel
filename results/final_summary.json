@@ -1,0 +1,56 @@
+{
+  "analysis_info": {
+    "mode": "test",
+    "start_time": "2025-05-27T09:38:59.965418",
+    "end_time": "2025-05-27T09:43:48.854560",
+    "duration_seconds": 288.889142,
+    "duration_formatted": "0:04:48.889142"
+  },
+  "data_statistics": {
+    "specifications_downloaded": 2,
+    "raw_rules_extracted": 20,
+    "rules_processed": 20,
+    "processing_success_rate": "100.0%"
+  },
+  "rule_analysis": {
+    "category_distribution": {
+      "COMPILATION_RULES": 4,
+      "EXCEPTION_HANDLING": 16
+    },
+    "version_distribution": {
+      "8": 10,
+      "24": 10
+    },
+    "top_categories": [
+      [
+        "EXCEPTION_HANDLING",
+        16
+      ],
+      [
+        "COMPILATION_RULES",
+        4
+      ]
+    ]
+  },
+  "conflict_analysis": {
+    "total_conflicts": 2,
+    "by_severity": {
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "by_type": {
+      "VERSION_CHANGE": 2
+    },
+    "critical_conflicts": []
+  },
+  "recommendations": [
+    "🔄 2 version changes require migration guidance"
+  ],
+  "files_generated": [
+    "/content/drive/My Drive/SpecSentinel/data/all_specifications.json",
+    "/content/drive/My Drive/SpecSentinel/data/extracted_rules.json",
+    "/content/drive/My Drive/SpecSentinel/data/processed_rules.json",
+    "/content/drive/My Drive/SpecSentinel/results/conflict_report.json",
+    "/content/drive/My Drive/SpecSentinel/results/final_summary.json"
+  ]
+}

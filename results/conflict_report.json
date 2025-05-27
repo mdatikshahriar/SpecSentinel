@@ -1,0 +1,61 @@
+{
+  "total_conflicts": 2,
+  "by_type": {
+    "VERSION_CHANGE": 2
+  },
+  "by_severity": {
+    "MEDIUM": 1,
+    "LOW": 1
+  },
+  "by_version_pair": {
+    "Java 8 vs Java 24": 2
+  },
+  "recommendations": [
+    "🔄 2 version changes require migration guidance"
+  ],
+  "detailed_conflicts": [
+    {
+      "rule1_id": "rule_0_8",
+      "rule2_id": "rule_10_24",
+      "rule1_version": "8",
+      "rule2_version": "24",
+      "rule1_section": "14.11",
+      "rule2_section": "14.11",
+      "type": "VERSION_CHANGE",
+      "severity": "MEDIUM",
+      "description": "Java 24 expands upon Java 8's rule by adding 'yield' statement and broadening the scope of what can be prevented from completing normally. The Java 24 version also explicitly includes 'expressions' and 'blocks' in addition to statements as elements that can be affected by control flow statements.",
+      "affected_scenarios": [
+        "Switch expressions using yield statements in Java 24",
+        "Control flow affecting expressions in Java 24",
+        "Block-level control flow behavior differences between versions"
+      ],
+      "resolution_needed": "Code written for Java 8 that relies on control flow behavior may need review when migrating to Java 24, particularly in cases involving switch expressions and yield statements. Documentation should clearly indicate version-specific behavior differences.",
+      "detected_at": "2025-05-27T09:42:26.019785",
+      "rule1_text": "However, certain events may prevent a statement from completing normally: The break ( §14.15 ), continue ( §14.16 ), and return ( §14.17 ) statements cause a transfer of control that may prevent norma...",
+      "rule2_text": "However, certain events may prevent a statement from completing normally: The break , yield , continue , and return statements ( §14.15 , §14.21 , §14.16 , §14.17 ) cause a transfer of control that ma..."
+    },
+    {
+      "rule1_id": "rule_2_8",
+      "rule2_id": "rule_15_24",
+      "rule1_version": "8",
+      "rule2_version": "24",
+      "rule1_section": "14.11",
+      "rule2_section": "14.11",
+      "type": "VERSION_CHANGE",
+      "severity": "LOW",
+      "description": "Rule 2 (Java 24) expands upon Rule 1 (Java 8) by providing a more comprehensive classification of abrupt completions, including throws as one of several possible completion reasons. While not contradictory, Rule 2 represents a significant clarification and expansion of the exception handling specification.",
+      "affected_scenarios": [
+        "Exception handling documentation and specification",
+        "Static analysis tool development",
+        "Compiler implementation"
+      ],
+      "resolution_needed": "No immediate resolution needed as Rule 2 is a natural evolution and clarification of Rule 1. However, developers working with multiple Java versions should be aware of the more detailed specification in newer versions.",
+      "detected_at": "2025-05-27T09:43:48.846792",
+      "rule1_text": "An explicit throw ( §14.18 ) statement also results in an exception....",
+      "rule2_text": "An abrupt completion always has an associated reason , which is one of the following: A break with no label A break with a given label A continue with no label A continue with a given label A return w..."
+    }
+  ],
+  "analysis_mode": "test",
+  "rules_analyzed": 20,
+  "generated_at": "2025-05-27T09:43:48.846991"
+}

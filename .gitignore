@@ -1,0 +1,10 @@
+### VS Code ###
+.vscode/
+
+### Logs ###
+logs/
+
+### custom ###
+.env
+.secrets
+.streamlit/
