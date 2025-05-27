@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ## **Project Title: SpecSentinel: Detecting Inconsistencies in Programming Language Specifications Using AI**
 
 ---
@@ -85,3 +86,7 @@ Unlike standard linters (which operate on code), **SpecSentinel is a “linter�
 * Paves the way for **automated spec validation** in programming language design.
 
 ---
+=======
+# SpecSentinel
+AI-powered specification linter for detecting inconsistencies, ambiguities, and semantic drift in programming language specs — starting with Java Language Specification (JLS) and JVM Spec.
+>>>>>>> 67c644473c73c62c3a91dc864dd7cfeb0cbe1f76
