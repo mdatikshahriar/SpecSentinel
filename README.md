@@ -1,92 +1,103 @@
-<<<<<<< HEAD
-## **Project Title: SpecSentinel: Detecting Inconsistencies in Programming Language Specifications Using AI**
+# **SpecSentinel: Detecting Inconsistencies in Programming Language Specifications Using AI**
 
 ---
 
-## **Problem Statement**
+## 📌 Problem Statement
 
 Programming language specifications (like the Java Language Specification and JVM Specification) are complex, semi-formal documents that evolve over time. They are often:
 
-* Written in natural or semi-structured language.  
-* Maintained across versions with evolving behavior.  
-* Prone to **inconsistencies**, **ambiguous semantics**, or **conflicting rules** (e.g., in method resolution, generics, exception handling).
+- Written in natural or semi-structured language  
+- Maintained across versions with evolving behavior  
+- Prone to **inconsistencies**, **ambiguous semantics**, or **conflicting rules** (e.g., in method resolution, generics, exception handling)
 
 These inconsistencies can lead to:
 
-* Misunderstandings by compiler/toolchain developers.  
-* Variability in implementation across JVMs.  
-* Developer confusion and subtle bugs in edge cases.
+- Misunderstandings by compiler/toolchain developers  
+- Variability in implementation across JVMs  
+- Developer confusion and subtle bugs in edge cases
 
 ---
 
-## **Innovation: Why This Is a Novel Idea**
+## 🚀 Innovation: Why This Is a Novel Idea
 
-While formal verification and compiler testing exist, **there is no tool that analyzes natural-language specifications themselves** for contradictions or drift across versions. This project combines:
+While formal verification and compiler testing exist, **there is no tool that analyzes natural-language specifications themselves** for contradictions or drift across versions.
 
-* **NLP \+ LLMs**: To parse and semantically understand the English prose of the specification.  
-* **Symbolic analysis**: To model behaviors and rules logically.  
-* **Version tracking**: To detect semantic changes across Java versions (e.g., 8 → 11 → 17 → 21).  
-* **Rule synthesis and contradiction detection**: Inspired by CellularLint, but for a very different domain — formal language specs.
+**SpecSentinel** introduces a new paradigm:
 
-Unlike standard linters (which operate on code), **SpecSentinel is a “linter” for specs themselves.**
+- **LLM-powered semantic understanding** of English specification prose  
+- **Symbolic reasoning** to detect logical contradictions or ambiguities  
+- **Spec version drift detection** (e.g., JLS 8 → 11 → 17 → 21)  
+- **Specification linting** — analogous to code linters, but for the specs themselves
 
----
-
-## **How It Works**
-
-### **1\. Spec Ingestion**
-
-* Input: Java Language Specification (JLS) and JVM Specification in HTML/PDF form.  
-* Preprocessing: Clean and segment the document into rules, behaviors, and constraints using NLP techniques.
-
-### **2\. Behavior Modeling Engine**
-
-* Extract and structure rules like:  
-  * Method resolution and overloading behavior.  
-  * Inheritance and overriding.  
-  * Type compatibility and coercion rules.
-
-* Use an LLM (e.g., GPT-4.5 or Claude) to assist in semantic parsing and rule translation into symbolic logic (e.g., first-order logic).
-
-### **3\. Inconsistency Detection**
-
-* Use a logic solver (e.g., Z3) to check for:  
-  * Contradictory rules (e.g., two sections define different outcomes).  
-  * Ambiguities (e.g., under-specified conditions).  
-  * Redundant or unreachable rules.  
-* Use graph-based visualization to show rule flows and conflicts.
-
-### **4\. Version Drift Analyzer**
-
-* Compare rules across JLS versions.  
-* Highlight what changed and whether any previous guarantees are broken or left ambiguous.
+This idea is inspired by research like *CellularLint* but targets a different and previously unexplored domain.
 
 ---
 
-## **Technologies to Use**
+## ⚙️ How It Works
 
-| Component | Stack/Tool |
-| ----- | ----- |
-| NLP Preprocessing | spaCy, NLTK, or Transformer-based models |
-| LLM for Rule Understanding | OpenAI GPT-4.5 (via API) |
-| Logical Rule Modeling | Prolog, Z3 SMT Solver |
-| Diffing Engine | Custom text/AST diff or ChangeDistiller |
-| Visualization | D3.js for rule graphs |
-| Backend | Python or Node.js |
-| Deployment (Optional) | Streamlit or Flask for UI |
+### 1. Spec Ingestion
+
+- Input: Java Language Specification (JLS) and JVM Specification in HTML or PDF form  
+- NLP-based preprocessing to:
+  - Segment the spec into discrete rules and behaviors  
+  - Normalize structure for rule modeling
+
+### 2. Behavior Modeling Engine
+
+- Extract rules for:
+  - Method resolution, overloading  
+  - Type coercion and compatibility  
+  - Inheritance and overriding behavior  
+- Use an LLM (via OpenRouter API) to convert rules into symbolic logic
+
+> **Note:** You must provide a valid `OPENROUTER_API_KEY` to use LLM services.
+
+### 3. Inconsistency Detection
+
+- Translate rules into logical expressions  
+- Use the **Z3 SMT Solver** to check for:
+  - Contradictions  
+  - Ambiguities  
+  - Redundancies or unreachable rules  
+- Output conflict reports with **graph-based visualizations**
+
+### 4. Version Drift Analyzer
+
+- Compare semantically equivalent rules across JLS versions  
+- Highlight:
+  - Added/removed/modified rules  
+  - Potential breakage or undefined behavior  
+  - Semantic drift over time
 
 ---
 
-## **Potential Impact**
+## 🧪 Running the Project
 
-* **Compiler developers** can validate spec interpretations.  
-* **Language maintainers** can catch errors before release.  
-* **Language learners** get a visual, formal mapping of Java behavior.  
-* Extensible to **other languages** (e.g., Python, TypeScript, Solidity).  
-* Paves the way for **automated spec validation** in programming language design.
+This project is intended to be run in **Google Colab**.
 
----
-=======
-# SpecSentinel
-AI-powered specification linter for detecting inconsistencies, ambiguities, and semantic drift in programming language specs — starting with Java Language Specification (JLS) and JVM Spec.
->>>>>>> 67c644473c73c62c3a91dc864dd7cfeb0cbe1f76
+### ✅ Prerequisites
+
+- A Google account (for Colab and Drive access)
+- A valid `OPENROUTER_API_KEY` for LLM access
+- A copy of the Java Language Specification (HTML or PDF)
+
+### 📁 File Storage
+
+All generated artifacts (parsed rules, visualizations, intermediate outputs) are saved to **Google Drive** for persistence across sessions.
+
+### ▶️ Steps to Run
+
+1. Open the Colab notebook (`specsentinel.ipynb`)
+2. Mount your Google Drive:
+   ```python
+   from google.colab import drive
+   drive.mount('/content/drive')
+3. Set your OpenRouter API key:
+    ```python
+    import os
+    os.environ["OPENROUTER_API_KEY"] = "your_api_key_here"
+4. Run through each cell to:
+    - Preprocess spec
+    - Extract rules
+    - Analyze and detect contradictions
+    - Generate and store outputs
