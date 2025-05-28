@@ -1,17 +1,17 @@
 {
-  "total_conflicts": 44,
+  "total_conflicts": 45,
   "by_type": {
-    "VERSION_CHANGE": 42,
+    "VERSION_CHANGE": 43,
     "OVERLAP": 1,
     "CONTRADICTION": 1
   },
   "by_severity": {
     "LOW": 15,
-    "MEDIUM": 29
+    "MEDIUM": 30
   },
   "by_version_pair": {
     "Java 8 vs Java 11": 7,
-    "Java 8 vs Java 17": 12,
+    "Java 8 vs Java 17": 13,
     "Java 8 vs Java 21": 14,
     "Java 8 vs Java 24": 11
   },
@@ -296,11 +296,39 @@
       "rule1_url": "https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.12",
       "rule2_url": "https://docs.oracle.com/javase/specs/jls/se24/html/jls-15.html#jls-15.12.2",
       "call_limit_exceeded": false
+    },
+    {
+      "rule1_id": "rule_50_8",
+      "rule2_id": "rule_200_17",
+      "rule1_version": "8",
+      "rule2_version": "17",
+      "rule1_section": "14.11",
+      "rule2_section": "14.11",
+      "rule1_section_title": "Unknown",
+      "rule2_section_title": "Unknown",
+      "rule1_chapter": "Unknown",
+      "rule2_chapter": "Chapter 14. Blocks, Statements, and Patterns",
+      "type": "VERSION_CHANGE",
+      "severity": "MEDIUM",
+      "description": "Java 17 expands the rule in two ways: (1) adds the 'yield' statement as another control transfer mechanism, and (2) broadens the scope from just 'statements' to 'expressions, statements, and blocks'. This is an intentional evolution of the language specification rather than a conflict, but it represents a notable change in behavior between versions.",
+      "affected_scenarios": [
+        "Switch expressions using yield statements in Java 17",
+        "Control flow analysis involving expressions and blocks in Java 17",
+        "Code that needs to be compatible across Java 8 and 17"
+      ],
+      "resolution_needed": "Code written for Java 8 that needs to run on Java 17 should be reviewed for potential impact of the expanded rule, particularly in switch expressions and when analyzing control flow. However, this is a backward-compatible change that doesn't break existing code.",
+      "detected_at": "2025-05-27T06:10:16.835931",
+      "rule1_text": "However, certain events may prevent a statement from completing normally: The break ( §14.15 ), continue ( §14.16 ), and return ( §14.17 ) statements cause a transfer of control that may prevent norma...",
+      "rule2_text": "However, certain events may prevent a statement from completing normally: The break , yield , continue , and return statements ( §14.15 , §14.21 , §14.16 , §14.17 ) cause a transfer of control that ma...",
+      "common_entities": [],
+      "rule1_url": "https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-14.11",
+      "rule2_url": "https://docs.oracle.com/javase/specs/jls/se24/html/jls-15.html#jls-14.11",
+      "call_limit_exceeded": false
     }
   ],
   "analysis_mode": "full",
   "rules_analyzed": 2109,
-  "llm_calls_made": 0,
+  "llm_calls_made": 5000,
   "llm_calls_limit": 15000,
   "call_limit_reached": false,
   "generated_at": "2025-05-28T05:41:08.597646"
