@@ -1,50 +1,79 @@
 {
   "analysis_info": {
-    "mode": "test",
-    "start_time": "2025-05-27T09:38:59.965418",
-    "end_time": "2025-05-27T09:43:48.854560",
-    "duration_seconds": 288.889142,
-    "duration_formatted": "0:04:48.889142"
+    "mode": "full",
+    "start_time": "2025-05-28T05:41:05.663560",
+    "end_time": "2025-05-28T05:41:08.605068",
+    "duration_seconds": 2.941508,
+    "duration_formatted": "0:00:02.941508"
   },
   "data_statistics": {
-    "specifications_downloaded": 2,
-    "raw_rules_extracted": 20,
-    "rules_processed": 20,
+    "specifications_downloaded": 1,
+    "raw_rules_extracted": 2109,
+    "rules_processed": 2109,
     "processing_success_rate": "100.0%"
   },
   "rule_analysis": {
     "category_distribution": {
-      "COMPILATION_RULES": 4,
-      "EXCEPTION_HANDLING": 16
+      "COMPILATION_RULES": 412,
+      "METHOD_RESOLUTION": 46,
+      "TYPE_COMPATIBILITY": 41,
+      "EXCEPTION_HANDLING": 207,
+      "ACCESS_CONTROL": 211,
+      "CONSTRUCTOR_RULES": 84,
+      "INHERITANCE_RULES": 550,
+      "GENERICS_RULES": 216,
+      "INTERFACE_RULES": 342
     },
     "version_distribution": {
-      "8": 10,
-      "24": 10
+      "8": 365,
+      "11": 365,
+      "17": 461,
+      "21": 459,
+      "24": 459
     },
     "top_categories": [
       [
-        "EXCEPTION_HANDLING",
-        16
+        "INHERITANCE_RULES",
+        550
       ],
       [
         "COMPILATION_RULES",
-        4
+        412
+      ],
+      [
+        "INTERFACE_RULES",
+        342
+      ],
+      [
+        "GENERICS_RULES",
+        216
+      ],
+      [
+        "ACCESS_CONTROL",
+        211
       ]
     ]
   },
   "conflict_analysis": {
-    "total_conflicts": 2,
+    "total_conflicts": 44,
     "by_severity": {
-      "MEDIUM": 1,
-      "LOW": 1
+      "LOW": 15,
+      "MEDIUM": 29
     },
     "by_type": {
-      "VERSION_CHANGE": 2
+      "VERSION_CHANGE": 42,
+      "OVERLAP": 1,
+      "CONTRADICTION": 1
     },
     "critical_conflicts": []
   },
   "recommendations": [
-    "🔄 2 version changes require migration guidance"
+    "📋 Review Java 8 vs Java 11 compatibility - 7 conflicts detected",
+    "📋 Review Java 8 vs Java 17 compatibility - 12 conflicts detected",
+    "📋 Review Java 8 vs Java 21 compatibility - 14 conflicts detected",
+    "📋 Review Java 8 vs Java 24 compatibility - 11 conflicts detected",
+    "⚠️ 1 direct contradictions need specification clarification",
+    "🔄 42 version changes require migration guidance"
   ],
   "files_generated": [
     "/content/drive/My Drive/SpecSentinel/data/all_specifications.json",

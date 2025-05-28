@@ -1,3 +1,7 @@
+# Specific files to ignore
+embeddings_cache.pkl
+nohup.out
+
 ### VS Code ###
 .vscode/
 
@@ -7,4 +11,4 @@ logs/
 ### custom ###
 .env
 .secrets
-.streamlit/
+nohup.out

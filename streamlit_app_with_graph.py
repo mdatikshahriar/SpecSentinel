@@ -131,7 +131,6 @@ class JavaSpecAgent:
             
             # Try fallback models
             fallback_models = [
-                "openai/gpt-4.1-mini",
                 "deepseek/deepseek-chat-v3-0324:free",
                 "meta-llama/llama-3.2-3b-instruct:free",
                 "google/gemma-2-9b-it:free",
