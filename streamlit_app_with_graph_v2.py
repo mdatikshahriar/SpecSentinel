@@ -127,10 +127,9 @@ class JavaSpecAgent:
             
             # Try fallback models
             fallback_models = [
-                "deepseek/deepseek-chat-v3-0324:free",
-                "meta-llama/llama-3.2-3b-instruct:free",
-                "google/gemma-2-9b-it:free",
-                "microsoft/phi-3-mini-128k-instruct:free"
+                "all-MiniLM-L6-v2",
+                "paraphrase-MiniLM-L6-v2",
+                "all-mpnet-base-v2"
             ]
             
             print("🔄 Attempting to load fallback models...")
@@ -264,6 +263,7 @@ class JavaSpecAgent:
         self.knowledge_base.setdefault('conflict_report', {'detailed_conflicts': []})
         self.knowledge_base.setdefault('specifications', {})
         self.knowledge_base.setdefault('knowledge_base', {})
+        self.knowledge_base.setdefault('summary', {})
 
         print(f"✅ Knowledge base loaded with {len(self.knowledge_base)} components")
 
@@ -405,9 +405,6 @@ class JavaSpecAgent:
         elif doc_type == 'specification':
             spec_key = doc.get('spec_key', 'unknown')
             identifier = f"spec|{spec_key}|{java_version}|{section}|{content_hash}"
-        elif doc_type == 'knowledge_base':
-            category = doc.get('category', 'unknown')
-            identifier = f"kb|{category}|{java_version}|{content_hash}"
         else:
             identifier = f"{doc_type}|{doc_id}|{content_hash}"
         
@@ -463,29 +460,6 @@ class JavaSpecAgent:
                 # Ensure the text is not empty before adding and is a string
                 if isinstance(doc['text'], str) and doc['text'].strip():
                     documents.append(doc)
-
-        # Process knowledge base (new file)
-        knowledge_base_data = self.knowledge_base.get('knowledge_base', {})
-        if knowledge_base_data:
-            print(f"   Preparing knowledge base entries for indexing...")
-            # Handle different structures in the knowledge base file
-            if isinstance(knowledge_base_data, dict):
-                for key, value in knowledge_base_data.items():
-                    if isinstance(value, dict):
-                        text_content = value.get('content', '') or value.get('text', '') or str(value)
-                    else:
-                        text_content = str(value)
-                    
-                    if text_content and text_content.strip():
-                        doc = {
-                            'id': f"knowledge_base_{len(documents)}_{key}",
-                            'text': text_content,
-                            'type': 'knowledge_base',
-                            'category': key,
-                            'java_version': value.get('java_version', 'unknown') if isinstance(value, dict) else 'unknown',
-                            'metadata': value
-                        }
-                        documents.append(doc)
 
         # Process conflicts from both sources
         # First from conflict_report (detailed_conflicts)
@@ -578,6 +552,26 @@ class JavaSpecAgent:
                         }
                         if isinstance(doc['text'], str) and doc['text'].strip():
                              documents.append(doc)
+
+        # Process knowledge_base entries
+        knowledge_base_data = self.knowledge_base.get('knowledge_base', {})
+        if knowledge_base_data:
+            print(f"   Preparing knowledge_base entries for indexing...")
+            for kb_key, kb_data in knowledge_base_data.items():
+                if isinstance(kb_data, dict):
+                    text = kb_data.get('content', '') or kb_data.get('text', '') or str(kb_data)
+                else:
+                    text = str(kb_data)
+                
+                if isinstance(text, str) and text.strip():
+                    doc = {
+                        'id': f"kb_{kb_key}",
+                        'text': text,
+                        'type': 'knowledge_base',
+                        'kb_key': kb_key,
+                        'metadata': kb_data
+                    }
+                    documents.append(doc)
 
         print(f"   Prepared {len(documents)} documents for indexing.")
         return documents
@@ -707,223 +701,16 @@ class JavaSpecAgent:
         # Return relevant documents with scores
         results = []
         for idx in relevant_indices:
-            doc = self.embeddings_cache['documents'][idx].copy()
-            doc['similarity_score'] = float(similarities[idx])
-            results.append(doc)
+            # Add boundary check in case index is somehow out of bounds
+            if idx < len(self.embeddings_cache['documents']):
+                doc = self.embeddings_cache['documents'][idx].copy()
+                doc['similarity_score'] = float(similarities[idx])
+                results.append(doc)
+            else:
+                 print(f"   ⚠️ Retrieved invalid index {idx} from embeddings cache.")
 
         return results
 
-    def classify_query_intent(self, query: str) -> Dict[str, Any]:
-        """Enhanced query intent classification with comprehensive scenarios"""
-        query_lower = query.lower().strip()
-        
-        # Initialize classification result
-        classification = {
-            'primary_intent': 'general',
-            'secondary_intents': [],
-            'confidence': 0.5,
-            'java_versions': [],
-            'entities': [],
-            'query_type': 'informational',
-            'urgency': 'normal',
-            'complexity': 'simple'
-        }
-        
-        # Define patterns for different intents
-        intent_patterns = {
-            'conflict_analysis': [
-                r'conflict', r'contradiction', r'inconsistent', r'disagree', r'differ',
-                r'incompatible', r'clash', r'oppose', r'violation', r'mismatch'
-            ],
-            'version_comparison': [
-                r'java \d+', r'jdk \d+', r'compare.*version', r'difference.*between',
-                r'changed.*from', r'evolution', r'migration', r'upgrade', r'downgrade'
-            ],
-            'rule_lookup': [
-                r'rule', r'regulation', r'specification', r'requirement', r'standard',
-                r'guideline', r'constraint', r'restriction', r'policy'
-            ],
-            'explanation': [
-                r'what.*is', r'how.*does', r'why.*is', r'explain', r'describe',
-                r'define', r'meaning', r'purpose', r'rationale'
-            ],
-            'example_request': [
-                r'example', r'sample', r'demonstration', r'show.*me', r'illustrate',
-                r'instance', r'case.*study', r'scenario'
-            ],
-            'best_practices': [
-                r'best.*practice', r'recommendation', r'should.*i', r'how.*to',
-                r'proper.*way', r'correct.*approach', r'optimal', r'advice'
-            ],
-            'troubleshooting': [
-                r'error', r'problem', r'issue', r'bug', r'fail', r'wrong',
-                r'not.*work', r'troubleshoot', r'debug', r'fix'
-            ],
-            'compatibility': [
-                r'compatible', r'support', r'work.*with', r'integrate',
-                r'interoperable', r'backward.*compatible', r'forward.*compatible'
-            ],
-            'performance': [
-                r'performance', r'speed', r'optimization', r'efficiency',
-                r'memory', r'cpu', r'benchmark', r'profiling'
-            ],
-            'security': [
-                r'security', r'vulnerable', r'exploit', r'attack', r'safe',
-                r'encryption', r'authentication', r'authorization'
-            ]
-        }
-        
-        # Calculate intent scores
-        intent_scores = {}
-        for intent, patterns in intent_patterns.items():
-            score = 0
-            matches = []
-            for pattern in patterns:
-                pattern_matches = re.findall(pattern, query_lower)
-                if pattern_matches:
-                    score += len(pattern_matches) * (1.0 / len(patterns))
-                    matches.extend(pattern_matches)
-            
-            if score > 0:
-                intent_scores[intent] = {
-                    'score': score,
-                    'matches': matches
-                }
-        
-        # Determine primary intent
-        if intent_scores:
-            primary_intent = max(intent_scores.keys(), key=lambda x: intent_scores[x]['score'])
-            classification['primary_intent'] = primary_intent
-            classification['confidence'] = min(intent_scores[primary_intent]['score'], 1.0)
-            
-            # Add secondary intents
-            for intent, data in intent_scores.items():
-                if intent != primary_intent and data['score'] > 0.3:
-                    classification['secondary_intents'].append(intent)
-        
-        # Extract Java versions
-        java_versions = re.findall(r'java\s*(\d+(?:\.\d+)*)', query_lower)
-        jdk_versions = re.findall(r'jdk\s*(\d+(?:\.\d+)*)', query_lower)
-        classification['java_versions'] = list(set(java_versions + jdk_versions))
-        
-        # Extract entities (keywords)
-        entity_patterns = [
-            r'class(?:es)?', r'method(?:s)?', r'interface(?:s)?', r'package(?:s)?',
-            r'annotation(?:s)?', r'generic(?:s)?', r'lambda(?:s)?', r'stream(?:s)?',
-            r'module(?:s)?', r'record(?:s)?', r'switch', r'pattern', r'sealed'
-        ]
-        
-        entities = []
-        for pattern in entity_patterns:
-            matches = re.findall(pattern, query_lower)
-            entities.extend(matches)
-        classification['entities'] = list(set(entities))
-        
-        # Determine query type
-        if any(word in query_lower for word in ['what', 'how', 'why', 'when', 'where']):
-            classification['query_type'] = 'informational'
-        elif any(word in query_lower for word in ['should', 'can', 'may', 'could']):
-            classification['query_type'] = 'advisory'
-        elif any(word in query_lower for word in ['compare', 'difference', 'versus']):
-            classification['query_type'] = 'comparative'
-        elif any(word in query_lower for word in ['fix', 'solve', 'resolve', 'debug']):
-            classification['query_type'] = 'procedural'
-        
-        # Determine urgency
-        urgency_indicators = {
-            'critical': ['urgent', 'critical', 'emergency', 'asap', 'immediately'],
-            'high': ['important', 'priority', 'soon', 'quickly'],
-            'low': ['later', 'whenever', 'eventually', 'sometime']
-        }
-        
-        for level, indicators in urgency_indicators.items():
-            if any(indicator in query_lower for indicator in indicators):
-                classification['urgency'] = level
-                break
-        
-        # Determine complexity
-        complexity_indicators = {
-            'complex': ['multiple', 'various', 'several', 'complex', 'advanced', 'detailed'],
-            'simple': ['simple', 'basic', 'quick', 'brief', 'short']
-        }
-        
-        for level, indicators in complexity_indicators.items():
-            if any(indicator in query_lower for indicator in indicators):
-                classification['complexity'] = level
-                break
-        
-        return classification
-
-    def generate_response(self, query: str, context: List[Dict], intent: Dict) -> str:
-        """Generate enhanced response using OpenRouter with improved context awareness"""
-        
-        # Build context string with better formatting
-        context_parts = []
-        for i, doc in enumerate(context):
-            doc_type = doc.get('type', 'unknown')
-            similarity = doc.get('similarity_score', 0)
-            
-            context_header = f"[Context {i+1} - {doc_type.title()} (Relevance: {similarity:.2f})]"
-            context_parts.append(f"{context_header}\n{doc['text']}\n")
-        
-        context_str = "\n".join(context_parts)
-        
-        # Enhanced system prompt based on intent
-        system_prompts = {
-            'conflict_analysis': """You are a Java specification expert specializing in conflict analysis. 
-            Analyze conflicts between different Java versions, identify incompatibilities, and provide resolution strategies.
-            Focus on practical implications and migration paths.""",
-            
-            'version_comparison': """You are a Java version comparison specialist. 
-            Compare features, syntax, and behaviors across Java versions. Highlight key differences and evolution patterns.
-            Provide migration guidance and compatibility considerations.""",
-            
-            'rule_lookup': """You are a Java specification rule expert. 
-            Provide precise rule interpretations, cite specific sections, and explain compliance requirements.
-            Include practical examples and edge cases.""",
-            
-            'explanation': """You are a Java concept explainer. 
-            Provide clear, comprehensive explanations with examples. Break down complex topics into understandable parts.
-            Use analogies and practical scenarios to illustrate concepts.""",
-            
-            'troubleshooting': """You are a Java troubleshooting expert. 
-            Diagnose problems, provide step-by-step solutions, and suggest preventive measures.
-            Include debugging techniques and common pitfalls.""",
-            
-            'best_practices': """You are a Java best practices advisor. 
-            Provide actionable recommendations, explain trade-offs, and suggest optimal approaches.
-            Include industry standards and proven patterns."""
-        }
-        
-        system_prompt = system_prompts.get(
-            intent['primary_intent'], 
-            "You are a comprehensive Java specification expert assistant."
-        )
-        
-        # Build user prompt with intent-aware formatting
-        user_prompt = f"""
-Query Intent Analysis:
-- Primary Intent: {intent['primary_intent']}
-- Query Type: {intent['query_type']}
-- Complexity: {intent['complexity']}
-- Java Versions Mentioned: {', '.join(intent['java_versions']) if intent['java_versions'] else 'None'}
-- Entities: {', '.join(intent['entities']) if intent['entities'] else 'None'}
-
-User Query: {query}
-
-Relevant Context:
-{context_str}
-
-Please provide a comprehensive response based on the context and intent analysis. 
-Structure your response appropriately for the identified intent and complexity level.
-If conflicts are mentioned in the context, highlight them prominently.
-Include practical examples where relevant.
-"""
-        return self._call_llm([
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ])
-    
     # Modified _call_llm to accept messages list
     def _call_llm(self, messages: List[Dict[str, str]], max_tokens: int = None, temperature: float = None) -> str:
         """Call OpenRouter API with efficient model selection"""
@@ -936,8 +723,8 @@ Include practical examples where relevant.
 
         # Use cost-effective models
         models = [
-            # "openai/gpt-4.1-mini",
-            # "anthropic/claude-3.5-haiku",
+            "openai/gpt-4o-mini",
+            "anthropic/claude-3.5-haiku",
             "deepseek/deepseek-chat-v3-0324:free",
             "meta-llama/llama-3.2-3b-instruct:free",
         ]
@@ -955,8 +742,8 @@ Include practical examples where relevant.
                     json={
                         "model": model,
                         "messages": messages, # Use the passed messages list
-                        "max_tokens": self.config.max_tokens_per_call,
-                        "temperature": self.config.temperature
+                        "max_tokens": max_tokens,
+                        "temperature": temperature
                     },
                     timeout=60 # Increased timeout for LLM calls
                 )
@@ -983,7 +770,6 @@ Include practical examples where relevant.
                     print(f"   ❌ Model {model} failed with status {response.status_code}: {response.text}")
                     break # Try next model
 
-
             except requests.exceptions.Timeout:
                 print(f"   ⏰ Timeout calling {model}, trying next...")
                 continue # Try next model
@@ -991,431 +777,797 @@ Include practical examples where relevant.
                 print(f"   ❌ Model {model} failed with exception: {str(e)[:200]}") # Print truncated error
                 continue # Try next model
 
-
         print("❌ All models failed or encountered issues.")
         return "I apologize, but I'm having trouble accessing my knowledge base right now. Please try again."
 
+    def classify_query_intent(self, query: str) -> str:
+        """Classify user query intent with comprehensive pattern matching"""
+        query_lower = query.lower()
+
+        # Statistics/analysis patterns
+        stats_patterns = [
+            'statistics', 'stats', 'analysis', 'report', 'summary', 'visualize', 
+            'chart', 'graph', 'plot', 'dashboard', 'metrics', 'data', 'overview',
+            'breakdown', 'distribution', 'count', 'number of', 'how many'
+        ]
+        if any(pattern in query_lower for pattern in stats_patterns):
+            return 'statistics_request'
+
+        # Greeting patterns
+        greeting_patterns = [
+            'hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening',
+            'greetings', 'howdy', 'what\'s up', 'how are you', 'nice to meet'
+        ]
+        if any(pattern in query_lower for pattern in greeting_patterns):
+            return 'greeting'
+
+        # Farewell patterns
+        farewell_patterns = [
+            'bye', 'goodbye', 'see you', 'farewell', 'exit', 'quit', 'thanks',
+            'thank you', 'that\'s all', 'done', 'finished', 'end'
+        ]
+        if any(pattern in query_lower for pattern in farewell_patterns):
+            return 'farewell'
+
+        # Help/guidance patterns
+        help_patterns = [
+            'help', 'how to', 'what can you do', 'capabilities', 'features',
+            'guide', 'tutorial', 'instructions', 'commands', 'usage'
+        ]
+        if any(pattern in query_lower for pattern in help_patterns):
+            return 'help_request'
+
+        # Conflict-related queries
+        conflict_patterns = [
+            'conflict', 'contradiction', 'ambiguity', 'inconsistency', 'problem', 
+            'issue', 'error', 'bug', 'discrepancy', 'mismatch', 'incompatible',
+            'breaking change', 'deprecated', 'removed'
+        ]
+        if any(pattern in query_lower for pattern in conflict_patterns):
+            return 'conflict_inquiry'
+
+        # Specification queries
+        spec_patterns = [
+            'specification', 'rule', 'section', 'jls', 'java language specification',
+            'standard', 'documentation', 'reference', 'manual', 'guideline'
+        ]
+        if any(pattern in query_lower for pattern in spec_patterns):
+            return 'specification_inquiry'
+
+        # Version comparison
+        version_patterns = [
+            'java 8', 'java 11', 'java 17', 'java 21', 'version', 'difference', 
+            'change', 'migration', 'upgrade', 'downgrade', 'compatibility',
+            'evolution', 'history', 'timeline'
+        ]
+        if any(pattern in query_lower for pattern in version_patterns):
+            return 'version_comparison'
+
+        # Code examples/implementation
+        code_patterns = [
+            'example', 'code', 'implementation', 'sample', 'demo', 'snippet',
+            'how to implement', 'show me', 'demonstrate'
+        ]
+        if any(pattern in query_lower for pattern in code_patterns):
+            return 'code_example_request'
+
+        # Performance/optimization queries
+        performance_patterns = [
+            'performance', 'optimization', 'speed', 'memory', 'efficiency',
+            'benchmark', 'profiling', 'bottleneck'
+        ]
+        if any(pattern in query_lower for pattern in performance_patterns):
+            return 'performance_inquiry'
+
+        # Best practices
+        best_practice_patterns = [
+            'best practice', 'recommendation', 'should i', 'better way',
+            'advice', 'suggestion', 'pattern', 'anti-pattern'
+        ]
+        if any(pattern in query_lower for pattern in best_practice_patterns):
+            return 'best_practice_request'
+
+        return 'general_inquiry'
+
+    def generate_statistics_summary(self) -> str:
+        """Generate comprehensive statistics summary"""
+        try:
+            conflict_data = self.knowledge_base.get('conflict_report', {})
+            summary_data = self.knowledge_base.get('summary', {})
+            
+            if not conflict_data or not summary_data:
+                return "❌ Statistics data not available. Please ensure the analysis results are properly loaded."
+            
+            # Generate comprehensive summary
+            report = "📊 **JAVA SPECIFICATION ANALYSIS SUMMARY**\n"
+            report += "=" * 50 + "\n\n"
+            
+            # Analysis Overview
+            if 'analysis_info' in summary_data:
+                analysis_info = summary_data['analysis_info']
+                report += "🔍 **ANALYSIS OVERVIEW:**\n"
+                report += f"• Duration: {analysis_info.get('duration_formatted', 'N/A')}\n"
+                if 'data_statistics' in summary_data:
+                    stats = summary_data['data_statistics']
+                    report += f"• Processing Success Rate: {stats.get('processing_success_rate', 'N/A')}\n"
+                    report += f"• Rules Analyzed: {stats.get('rules_processed', 'N/A')}\n\n"
+            
+            # Conflict Summary
+            report += "⚠️ **CONFLICT SUMMARY:**\n"
+            report += f"• Total Conflicts: {conflict_data.get('total_conflicts', 0)}\n"
+            if 'by_version_pair' in conflict_data:
+                report += f"• Version Pairs: {list(conflict_data['by_version_pair'].keys())}\n\n"
+            
+            # Severity Breakdown
+            if 'by_severity' in conflict_data:
+                report += "🎯 **SEVERITY BREAKDOWN:**\n"
+                for severity, count in conflict_data['by_severity'].items():
+                    report += f"• {severity}: {count} conflicts\n"
+                report += "\n"
+            
+            # Rule Categories
+            if 'rule_analysis' in summary_data and 'category_distribution' in summary_data['rule_analysis']:
+                report += "📋 **RULE CATEGORIES:**\n"
+                for category, count in summary_data['rule_analysis']['category_distribution'].items():
+                    report += f"• {category}: {count} rules\n"
+                report += "\n"
+            
+            # Recommendations
+            if 'recommendations' in conflict_data:
+                report += "💡 **RECOMMENDATIONS:**\n"
+                for rec in conflict_data['recommendations']:
+                    report += f"• {rec}\n"
+            
+            return report
+            
+        except Exception as e:
+            return f"❌ Error generating statistics: {str(e)}"
+
+    def create_visualizations(self) -> List[str]:
+        """Create visualization charts and return base64 encoded images"""
+        try:
+            conflict_data = self.knowledge_base.get('conflict_report', {})
+            summary_data = self.knowledge_base.get('summary', {})
+            
+            if not conflict_data or not summary_data:
+                return []
+            
+            images = []
+            
+            # Set style for matplotlib
+            plt.style.use('default')
+            sns.set_palette("husl")
+            
+            # 1. Conflict Severity Distribution
+            if 'by_severity' in conflict_data and conflict_data['by_severity']:
+                fig, ax = plt.subplots(figsize=(10, 6))
+                severity_data = conflict_data['by_severity']
+                colors = ['#ff9999', '#66b3ff', '#99ff99', '#ffcc99']
+                
+                wedges, texts, autotexts = ax.pie(
+                    severity_data.values(), 
+                    labels=severity_data.keys(), 
+                    autopct='%1.1f%%',
+                    colors=colors[:len(severity_data)],
+                    explode=[0.05] * len(severity_data)
+                )
+                ax.set_title('Conflict Severity Distribution', fontsize=14, fontweight='bold')
+                
+                # Convert to base64
+                buffer = io.BytesIO()
+                plt.savefig(buffer, format='png', bbox_inches='tight', dpi=150)
+                buffer.seek(0)
+                image_base64 = base64.b64encode(buffer.getvalue()).decode()
+                images.append(image_base64)
+                plt.close()
+            
+            # 2. Rule Category Distribution
+            if 'rule_analysis' in summary_data and 'category_distribution' in summary_data['rule_analysis']:
+                fig, ax = plt.subplots(figsize=(12, 6))
+                categories = summary_data['rule_analysis']['category_distribution']
+                
+                bars = ax.bar(categories.keys(), categories.values(), 
+                             color=['#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3'])
+                ax.set_title('Rule Category Distribution', fontsize=14, fontweight='bold')
+                ax.set_ylabel('Number of Rules')
+                plt.xticks(rotation=45, ha='right')
+                
+                # Add value labels on bars
+                for bar in bars:
+                    height = bar.get_height()
+                    ax.text(bar.get_x() + bar.get_width()/2., height,
+                           f'{int(height)}', ha='center', va='bottom')
+                
+                # Convert to base64
+                buffer = io.BytesIO()
+                plt.savefig(buffer, format='png', bbox_inches='tight', dpi=150)
+                buffer.seek(0)
+                image_base64 = base64.b64encode(buffer.getvalue()).decode()
+                images.append(image_base64)
+                plt.close()
+            
+            # 3. Version Distribution
+            if 'rule_analysis' in summary_data and 'version_distribution' in summary_data['rule_analysis']:
+                fig, ax = plt.subplots(figsize=(8, 8))
+                version_data = summary_data['rule_analysis']['version_distribution']
+                
+                wedges, texts, autotexts = ax.pie(
+                    version_data.values(), 
+                    labels=[f'Java {v}' for v in version_data.keys()],
+                    autopct='%1.1f%%',
+                    colors=['#fdb462', '#b3de69']
+                )
+                # Create donut by adding a white circle in center
+                centre_circle = plt.Circle((0,0), 0.40, fc='white')
+                ax.add_patch(centre_circle)
+                ax.set_title('Java Version Distribution', fontsize=14, fontweight='bold')
+                
+                # Convert to base64
+                buffer = io.BytesIO()
+                plt.savefig(buffer, format='png', bbox_inches='tight', dpi=150)
+                buffer.seek(0)
+                image_base64 = base64.b64encode(buffer.getvalue()).decode()
+                images.append(image_base64)
+                plt.close()
+            
+            return images
+            
+        except Exception as e:
+            print(f"❌ Error creating visualizations: {str(e)}")
+            return []
+
+    def create_interactive_plots(self) -> Dict[str, Any]:
+        """Create interactive Plotly visualizations and return plot data"""
+        try:
+            conflict_data = self.knowledge_base.get('conflict_report', {})
+            summary_data = self.knowledge_base.get('summary', {})
+            
+            if not conflict_data or not summary_data:
+                return {}
+            
+            plots = {}
+            
+            # 1. Conflict Severity Distribution
+            if 'by_severity' in conflict_data and conflict_data['by_severity']:
+                severity_data = conflict_data['by_severity']
+                fig = px.pie(
+                    values=list(severity_data.values()),
+                    names=list(severity_data.keys()),
+                    title='Conflict Severity Distribution',
+                    color_discrete_sequence=['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4']
+                )
+                fig.update_traces(textposition='inside', textinfo='percent+label')
+                fig.update_layout(
+                    font=dict(size=14),
+                    title_font_size=18,
+                    showlegend=True
+                )
+                plots['severity_pie'] = fig
+            
+            # 2. Rule Category Distribution
+            if 'rule_analysis' in summary_data and 'category_distribution' in summary_data['rule_analysis']:
+                categories = summary_data['rule_analysis']['category_distribution']
+                fig = px.bar(
+                    x=list(categories.keys()),
+                    y=list(categories.values()),
+                    title='Rule Category Distribution',
+                    color=list(categories.values()),
+                    color_continuous_scale='viridis'
+                )
+                fig.update_layout(
+                    xaxis_title='Categories', 
+                    yaxis_title='Number of Rules',
+                    font=dict(size=12),
+                    title_font_size=18
+                )
+                plots['category_bar'] = fig
+            
+            # 3. Version Comparison
+            if 'by_version_pair' in conflict_data and conflict_data['by_version_pair']:
+                version_pairs = conflict_data['by_version_pair']
+                fig = px.bar(
+                    x=list(version_pairs.keys()),
+                    y=list(version_pairs.values()),
+                    title='Conflicts by Version Pairs',
+                    color=list(version_pairs.values()),
+                    color_continuous_scale='reds'
+                )
+                fig.update_layout(
+                    xaxis_title='Version Pairs', 
+                    yaxis_title='Number of Conflicts',
+                    font=dict(size=12),
+                    title_font_size=18
+                )
+                plots['version_bar'] = fig
+            
+            # 4. Processing Statistics
+            if 'data_statistics' in summary_data:
+                stats = summary_data['data_statistics']
+                metrics = ['Specifications Downloaded', 'Raw Rules Extracted', 'Rules Processed']
+                values = [
+                    stats.get('specifications_downloaded', 0),
+                    stats.get('raw_rules_extracted', 0), 
+                    stats.get('rules_processed', 0)
+                ]
+                
+                fig = px.funnel(
+                    x=values,
+                    y=metrics,
+                    title='Processing Pipeline Statistics',
+                    color=values,
+                    color_continuous_scale='blues'
+                )
+                fig.update_layout(
+                    font=dict(size=12),
+                    title_font_size=18
+                )
+                plots['processing_funnel'] = fig
+            
+            # 5. Conflict Type Distribution
+            if 'by_type' in conflict_data and conflict_data['by_type']:
+                type_data = conflict_data['by_type']
+                fig = px.treemap(
+                    names=list(type_data.keys()),
+                    values=list(type_data.values()),
+                    title='Conflict Types Distribution',
+                    color=list(type_data.values()),
+                    color_continuous_scale='plasma'
+                )
+                fig.update_layout(
+                    font=dict(size=12),
+                    title_font_size=18
+                )
+                plots['type_treemap'] = fig
+            
+            return plots
+            
+        except Exception as e:
+            print(f"❌ Error creating interactive plots: {str(e)}")
+            return {}
+
+    def generate_detailed_report(self) -> str:
+        """Generate a comprehensive detailed report"""
+        try:
+            conflict_data = self.knowledge_base.get('conflict_report', {})
+            summary_data = self.knowledge_base.get('summary', {})
+            
+            if not conflict_data or not summary_data:
+                return "❌ Report data not available."
+            
+            report = "📋 **DETAILED ANALYSIS REPORT**\n"
+            report += "=" * 80 + "\n\n"
+            
+            # Executive Summary
+            report += "🎯 **EXECUTIVE SUMMARY**\n"
+            report += "-" * 40 + "\n"
+            total_conflicts = conflict_data.get('total_conflicts', 0)
+            rules_analyzed = summary_data.get('data_statistics', {}).get('rules_processed', 0)
+            conflict_rate = (total_conflicts / rules_analyzed) * 100 if rules_analyzed > 0 else 0
+            
+            report += f"Analysis completed successfully with {conflict_rate:.1f}% conflict rate.\n"
+            report += f"Out of {rules_analyzed} rules analyzed across Java versions,\n"
+            report += f"{total_conflicts} conflicts were identified.\n\n"
+            
+            # Key Findings
+            report += "🔍 **KEY FINDINGS**\n"
+            report += "-" * 40 + "\n"
+            if 'by_type' in conflict_data:
+                conflict_types = list(conflict_data['by_type'].keys())
+                report += f"1. Conflict types identified: {', '.join(conflict_types)}\n"
+            
+            if 'by_severity' in conflict_data:
+                severities = conflict_data['by_severity']
+                report += f"2. Severity distribution: {dict(severities)}\n"
+            
+            report += "3. Primary areas affected: control flow statements and exception handling\n"
+            report += "4. Version evolution patterns detected in language specifications\n\n"
+            
+            # Risk Assessment
+            report += "⚠️ **RISK ASSESSMENT**\n"
+            report += "-" * 40 + "\n"
+            if 'by_severity' in conflict_data:
+                medium_conflicts = conflict_data['by_severity'].get('MEDIUM', 0)
+                high_conflicts = conflict_data['by_severity'].get('HIGH', 0)
+                low_conflicts = conflict_data['by_severity'].get('LOW', 0)
+                
+                if high_conflicts > 0:
+                    report += f"• {high_conflicts} HIGH severity conflicts require immediate attention\n"
+                if medium_conflicts > 0:
+                    report += f"• {medium_conflicts} MEDIUM severity conflicts require attention during migration\n"
+                if low_conflicts > 0:
+                    report += f"• {low_conflicts} LOW severity conflicts are informational\n"
+            
+            report += "\nOverall Risk Level: Varies by conflict severity\n"
+            report += "Migration planning recommended based on conflict analysis\n\n"
+            
+            # Recommendations
+            report += "💡 **DETAILED RECOMMENDATIONS**\n"
+            report += "-" * 40 + "\n"
+            if 'recommendations' in conflict_data:
+                for i, rec in enumerate(conflict_data['recommendations'], 1):
+                    report += f"{i}. {rec}\n"
+            else:
+                report += "1. Code Review: Focus on identified conflict areas\n"
+                report += "2. Testing: Comprehensive testing of affected components\n"
+                report += "3. Documentation: Update documentation for version differences\n"
+                report += "4. Training: Brief team on specification changes\n"
+            
+            report += "\n" + "=" * 80 + "\n"
+            
+            return report
+            
+        except Exception as e:
+            return f"❌ Error generating detailed report: {str(e)}"
+
+    def generate_contextual_visualization(self, query: str, context: str) -> Dict[str, Any]:
+        """Generate contextual visualizations based on query and retrieved context"""
+        try:
+            plots = {}
+            
+            # Analyze query for visualization needs
+            query_lower = query.lower()
+            
+            # If asking about trends or changes over time
+            if any(word in query_lower for word in ['trend', 'change', 'evolution', 'history', 'timeline']):
+                # Create timeline visualization if we have version data
+                if 'conflicts' in self.knowledge_base:
+                    conflicts = self.knowledge_base['conflicts']
+                    if isinstance(conflicts, list):
+                        # Extract version information for timeline
+                        version_timeline = {}
+                        for conflict in conflicts:
+                            v1 = conflict.get('rule1_version', 'Unknown')
+                            v2 = conflict.get('rule2_version', 'Unknown')
+                            key = f"{v1} → {v2}"
+                            version_timeline[key] = version_timeline.get(key, 0) + 1
+                        
+                        if version_timeline:
+                            fig = px.line(
+                                x=list(version_timeline.keys()),
+                                y=list(version_timeline.values()),
+                                title='Conflict Evolution Across Java Versions',
+                                markers=True
+                            )
+                            fig.update_layout(
+                                xaxis_title='Version Transitions',
+                                yaxis_title='Number of Conflicts',
+                                font=dict(size=12)
+                            )
+                            plots['timeline'] = fig
+            
+            # If asking about comparisons
+            if any(word in query_lower for word in ['compare', 'comparison', 'versus', 'vs', 'difference']):
+                # Create comparison charts
+                if 'rule_analysis' in self.knowledge_base.get('summary', {}):
+                    rule_analysis = self.knowledge_base['summary']['rule_analysis']
+                    if 'version_distribution' in rule_analysis:
+                        version_data = rule_analysis['version_distribution']
+                        
+                        fig = px.bar(
+                            x=list(version_data.keys()),
+                            y=list(version_data.values()),
+                            title='Rule Distribution by Java Version',
+                            color=list(version_data.values()),
+                            color_continuous_scale='viridis'
+                        )
+                        fig.update_layout(
+                            xaxis_title='Java Version',
+                            yaxis_title='Number of Rules',
+                            font=dict(size=12)
+                        )
+                        plots['version_comparison'] = fig
+            
+            # If asking about specific categories or types
+            if any(word in query_lower for word in ['category', 'type', 'kind', 'classification']):
+                # Create category breakdown
+                if 'by_type' in self.knowledge_base.get('conflict_report', {}):
+                    type_data = self.knowledge_base['conflict_report']['by_type']
+                    
+                    fig = px.sunburst(
+                        names=list(type_data.keys()),
+                        values=list(type_data.values()),
+                        title='Conflict Types Hierarchy'
+                    )
+                    plots['category_sunburst'] = fig
+            
+            return plots
+            
+        except Exception as e:
+            print(f"❌ Error generating contextual visualization: {str(e)}")
+            return {}
+
     def answer_query(self, query: str) -> Dict[str, Any]:
-        """Main query answering method with comprehensive response"""
-        
-        # Classify query intent
+        """Process user query and return comprehensive response"""
         intent = self.classify_query_intent(query)
         
-        # Retrieve relevant context
-        context = self.retrieve_relevant_context(query)
+        response = {
+            'intent': intent,
+            'text_response': '',
+            'visualizations': [],
+            'interactive_plots': {},
+            'detailed_report': ''
+        }
         
-        # Generate response
-        response = self.generate_response(query, context, intent)
+        # Handle different intents
+        if intent == 'greeting':
+            response['text_response'] = """
+            👋 **Welcome to SpecSentinel: Java Specification Agent!**
+            
+            I'm your intelligent assistant for Java Language Specification analysis. Here's what I can help you with:
+            
+            🔍 **Specification Analysis**
+            - Query Java language specification rules and sections
+            - Find specific documentation and references
+            - Explain complex specification details
+            
+            ⚠️ **Conflict Detection & Analysis**
+            - Identify contradictions between Java versions
+            - Analyze inconsistencies in specifications
+            - Provide conflict resolution guidance
+            
+            📊 **Statistics & Reporting**
+            - Generate comprehensive analysis reports
+            - Create interactive visualizations and charts
+            - Provide detailed breakdowns and metrics
+            
+            🔄 **Version Comparison**
+            - Compare differences between Java versions
+            - Track evolution of language features
+            - Migration guidance and recommendations
+            
+            **Try asking me:**
+            - "Show me statistics about the conflicts"
+            - "What are the main conflicts between Java 8 and Java 11?"
+            - "Generate a detailed report with visualizations"
+            - "Compare exception handling rules across versions"
+            """
+            
+        elif intent == 'help_request':
+            response['text_response'] = """
+            🆘 **SpecSentinel Help Guide**
+            
+            **Available Commands & Queries:**
+            
+            📈 **Statistics & Analysis:**
+            - "Show statistics" / "Generate report"
+            - "Create visualizations" / "Show charts"
+            - "Analysis summary" / "Data overview"
+            
+            🔍 **Specification Queries:**
+            - "Explain [topic]" / "What is [concept]?"
+            - "Show rules for [feature]"
+            - "Find specification for [topic]"
+            
+            ⚠️ **Conflict Analysis:**
+            - "Show conflicts between Java X and Y"
+            - "What conflicts exist in [area]?"
+            - "Analyze inconsistencies"
+            
+            🔄 **Version Comparison:**
+            - "Compare Java versions"
+            - "What changed in Java X?"
+            - "Migration from X to Y"
+            
+            **Tips:**
+            - Be specific about Java versions (8, 11, 17, 21)
+            - Ask for visualizations to get interactive charts
+            - Request detailed reports for comprehensive analysis
+            """
+            
+        elif intent == 'statistics_request':
+            response['text_response'] = self.generate_statistics_summary()
+            response['visualizations'] = self.create_visualizations()
+            response['interactive_plots'] = self.create_interactive_plots()
+            response['detailed_report'] = self.generate_detailed_report()
+            
+        elif intent == 'conflict_inquiry':
+            # Retrieve relevant context
+            relevant_docs = self.retrieve_relevant_context(query)
+            
+            # Prepare context for LLM
+            context = self._prepare_context_for_llm(relevant_docs)
+            
+            # Generate contextual visualizations
+            contextual_plots = self.generate_contextual_visualization(query, context)
+            response['interactive_plots'].update(contextual_plots)
+            
+            # Generate response using LLM
+            messages = [
+                {
+                    "role": "system",
+                    "content": """You are a Java Specification expert specializing in conflict analysis. Use the provided context to answer questions about conflicts, contradictions, and inconsistencies in Java specifications. Be specific, cite relevant sections, provide examples, and suggest resolution strategies when possible."""
+                },
+                {
+                    "role": "user", 
+                    "content": f"Context: {context}\n\nQuestion: {query}"
+                }
+            ]
+            
+            llm_response = self._call_llm(messages)
+            response['text_response'] = llm_response
+            
+        elif intent == 'specification_inquiry':
+            # Retrieve relevant context
+            relevant_docs = self.retrieve_relevant_context(query)
+            
+            # Prepare context for LLM
+            context = self._prepare_context_for_llm(relevant_docs)
+            
+            # Generate response using LLM
+            messages = [
+                {
+                    "role": "system",
+                    "content": """You are a Java Specification expert. Use the provided context to answer questions about Java language specifications, rules, and sections. Provide detailed explanations with relevant citations, examples, and practical implications."""
+                },
+                {
+                    "role": "user",
+                    "content": f"Context: {context}\n\nQuestion: {query}"
+                }
+            ]
+            
+            llm_response = self._call_llm(messages)
+            response['text_response'] = llm_response
+            
+        elif intent == 'version_comparison':
+            # Retrieve relevant context
+            relevant_docs = self.retrieve_relevant_context(query)
+            
+            # Prepare context for LLM
+            context = self._prepare_context_for_llm(relevant_docs)
+            
+            # Generate contextual visualizations
+            contextual_plots = self.generate_contextual_visualization(query, context)
+            response['interactive_plots'].update(contextual_plots)
+            
+            # Generate response using LLM
+            messages = [
+                {
+                    "role": "system",
+                    "content": """You are a Java expert specializing in version differences and migration. Use the provided context to compare Java versions, explain changes, improvements, and potential issues during migration. Provide practical guidance and examples."""
+                },
+                {
+                    "role": "user",
+                    "content": f"Context: {context}\n\nQuestion: {query}"
+                }
+            ]
+            
+            llm_response = self._call_llm(messages)
+            response['text_response'] = llm_response
+            
+        elif intent == 'code_example_request':
+            # Retrieve relevant context
+            relevant_docs = self.retrieve_relevant_context(query)
+            
+            # Prepare context for LLM
+            context = self._prepare_context_for_llm(relevant_docs)
+            
+            # Generate response using LLM
+            messages = [
+                {
+                    "role": "system",
+                    "content": """You are a Java expert who provides practical code examples and implementations. Use the provided context to create relevant code examples that demonstrate Java specification concepts, rules, and best practices. Include explanations and comments."""
+                },
+                {
+                    "role": "user",
+                    "content": f"Context: {context}\n\nQuestion: {query}"
+                }
+            ]
+            
+            llm_response = self._call_llm(messages)
+            response['text_response'] = llm_response
+            
+        elif intent == 'performance_inquiry':
+            # Retrieve relevant context
+            relevant_docs = self.retrieve_relevant_context(query)
+            
+            # Prepare context for LLM
+            context = self._prepare_context_for_llm(relevant_docs)
+            
+            # Generate response using LLM
+            messages = [
+                {
+                    "role": "system",
+                    "content": """You are a Java performance expert. Use the provided context to answer questions about performance implications of Java specification changes, optimization strategies, and performance-related conflicts between versions."""
+                },
+                {
+                    "role": "user",
+                    "content": f"Context: {context}\n\nQuestion: {query}"
+                }
+            ]
+            
+            llm_response = self._call_llm(messages)
+            response['text_response'] = llm_response
+            
+        elif intent == 'best_practice_request':
+            # Retrieve relevant context
+            relevant_docs = self.retrieve_relevant_context(query)
+            
+            # Prepare context for LLM
+            context = self._prepare_context_for_llm(relevant_docs)
+            
+            # Generate response using LLM
+            messages = [
+                {
+                    "role": "system",
+                    "content": """You are a Java best practices expert. Use the provided context to provide recommendations, best practices, and guidance based on Java specifications and identified conflicts. Focus on practical, actionable advice."""
+                },
+                {
+                    "role": "user",
+                    "content": f"Context: {context}\n\nQuestion: {query}"
+                }
+            ]
+            
+            llm_response = self._call_llm(messages)
+            response['text_response'] = llm_response
+            
+        elif intent == 'farewell':
+            response['text_response'] = """
+            👋 **Thank you for using SpecSentinel!**
+            
+            I hope I was able to help you with your Java specification analysis needs. 
+            
+            Feel free to return anytime for:
+            - Specification queries and analysis
+            - Conflict detection and resolution
+            - Version comparison and migration guidance
+            - Statistical reports and visualizations
+            
+            Have a great day! ☕
+            """
+            
+        else:  # general_inquiry
+            # Retrieve relevant context
+            relevant_docs = self.retrieve_relevant_context(query)
+            
+            # Prepare context for LLM
+            context = self._prepare_context_for_llm(relevant_docs)
+            
+            # Generate contextual visualizations if relevant
+            contextual_plots = self.generate_contextual_visualization(query, context)
+            response['interactive_plots'].update(contextual_plots)
+            
+            # Generate response using LLM
+            messages = [
+                {
+                    "role": "system",
+                    "content": """You are SpecSentinel, a helpful Java Specification Agent. Use the provided context to answer questions about Java specifications, conflicts, and analysis results. If the context doesn't contain relevant information, acknowledge this and provide general guidance based on your knowledge of Java specifications."""
+                },
+                {
+                    "role": "user",
+                    "content": f"Context: {context}\n\nQuestion: {query}"
+                }
+            ]
+            
+            llm_response = self._call_llm(messages)
+            response['text_response'] = llm_response
         
         # Add to conversation history
-        conversation_entry = {
+        self.conversation_history.append({
             'timestamp': datetime.now().isoformat(),
             'query': query,
             'intent': intent,
-            'context_count': len(context),
-            'response': response
-        }
-        self.conversation_history.append(conversation_entry)
+            'response': response['text_response']
+        })
         
-        return {
-            'response': response,
-            'intent': intent,
-            'context': context,
-            'metadata': {
-                'context_sources': [doc['type'] for doc in context],
-                'java_versions_involved': intent['java_versions'],
-                'confidence': intent['confidence']
-            }
-        }
+        return response
 
-    def generate_conflict_analysis_report(self) -> Dict[str, Any]:
-        """Generate comprehensive conflict analysis report with interactive data"""
+    def _prepare_context_for_llm(self, relevant_docs: List[Dict[str, Any]]) -> str:
+        """Prepare retrieved documents as context for LLM"""
+        if not relevant_docs:
+            return "No relevant context found in the knowledge base."
         
-        conflicts = self.knowledge_base.get('conflicts', [])
-        detailed_conflicts = self.knowledge_base.get('conflict_report', {}).get('detailed_conflicts', [])
+        context_parts = []
+        for doc in relevant_docs:
+            context_part = f"""
+Document Type: {doc.get('type', 'unknown')}
+Similarity Score: {doc.get('similarity_score', 0):.3f}
+Content: {doc.get('text', '')[:500]}...
+Metadata: Java Version: {doc.get('java_version', 'unknown')}, Section: {doc.get('section', 'unknown')}
+---
+"""
+            context_parts.append(context_part)
         
-        if not conflicts and not detailed_conflicts:
-            return {'error': 'No conflicts found in knowledge base'}
-        
-        # Combine all conflicts
-        all_conflicts = conflicts + detailed_conflicts
-        
-        # Analyze conflicts by various dimensions
-        analysis = {
-            'total_conflicts': len(all_conflicts),
-            'by_severity': {},
-            'by_java_version': {},
-            'by_type': {},
-            'by_affected_scenarios': {},
-            'resolution_status': {},
-            'timeline_data': [],
-            'network_data': {'nodes': [], 'edges': []},
-            'recommendations': []
-        }
-        
-        # Process each conflict
-        for i, conflict in enumerate(all_conflicts):
-            severity = conflict.get('severity', 'unknown')
-            conflict_type = conflict.get('type', 'unknown')
-            
-            # Count by severity
-            analysis['by_severity'][severity] = analysis['by_severity'].get(severity, 0) + 1
-            
-            # Count by type
-            analysis['by_type'][conflict_type] = analysis['by_type'].get(conflict_type, 0) + 1
-            
-            # Count by Java versions
-            versions = []
-            if 'rule1_version' in conflict:
-                versions.append(str(conflict['rule1_version']))
-            if 'rule2_version' in conflict:
-                versions.append(str(conflict['rule2_version']))
-            if 'java_versions' in conflict:
-                versions.extend([str(v) for v in conflict['java_versions']])
-            
-            for version in set(versions):
-                analysis['by_java_version'][version] = analysis['by_java_version'].get(version, 0) + 1
-            
-            # Count affected scenarios
-            scenarios = conflict.get('affected_scenarios', [])
-            for scenario in scenarios:
-                analysis['by_affected_scenarios'][scenario] = analysis['by_affected_scenarios'].get(scenario, 0) + 1
-            
-            # Timeline data
-            detected_at = conflict.get('detected_at', datetime.now().isoformat())
-            analysis['timeline_data'].append({
-                'date': detected_at,
-                'conflict_id': i,
-                'severity': severity,
-                'type': conflict_type,
-                'versions': versions
-            })
-            
-            # Network data for visualization
-            if len(versions) >= 2:
-                for j, v1 in enumerate(versions):
-                    # Add nodes
-                    if not any(node['id'] == v1 for node in analysis['network_data']['nodes']):
-                        analysis['network_data']['nodes'].append({
-                            'id': v1,
-                            'label': f'Java {v1}',
-                            'group': 'version'
-                        })
-                    
-                    for k, v2 in enumerate(versions[j+1:], j+1):
-                        if not any(node['id'] == v2 for node in analysis['network_data']['nodes']):
-                            analysis['network_data']['nodes'].append({
-                                'id': v2,
-                                'label': f'Java {v2}',
-                                'group': 'version'
-                            })
-                        
-                        # Add edges
-                        analysis['network_data']['edges'].append({
-                            'from': v1,
-                            'to': v2,
-                            'label': conflict_type,
-                            'color': {'color': '#ff0000' if severity == 'high' else '#ffaa00' if severity == 'medium' else '#ffff00'},
-                            'width': 3 if severity == 'high' else 2 if severity == 'medium' else 1
-                        })
-        
-        # Generate recommendations
-        if analysis['by_severity'].get('high', 0) > 0:
-            analysis['recommendations'].append({
-                'priority': 'high',
-                'title': 'Critical Conflicts Require Immediate Attention',
-                'description': f"Found {analysis['by_severity']['high']} high-severity conflicts that need immediate resolution.",
-                'action': 'Review and resolve high-severity conflicts first'
-            })
-        
-        if len(analysis['by_java_version']) > 2:
-            analysis['recommendations'].append({
-                'priority': 'medium',
-                'title': 'Multiple Java Version Conflicts',
-                'description': f"Conflicts span across {len(analysis['by_java_version'])} Java versions.",
-                'action': 'Consider creating version-specific migration guides'
-            })
-        
-        most_affected_scenario = max(analysis['by_affected_scenarios'].items(), key=lambda x: x[1])[0] if analysis['by_affected_scenarios'] else None
-        if most_affected_scenario:
-            analysis['recommendations'].append({
-                'priority': 'medium',
-                'title': f'Focus on {most_affected_scenario} Scenarios',
-                'description': f"The '{most_affected_scenario}' scenario is most frequently affected by conflicts.",
-                'action': f'Prioritize testing and documentation for {most_affected_scenario} scenarios'
-            })
-        
-        return analysis
-
-    def create_interactive_visualizations(self, analysis_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create interactive visualizations for the conflict analysis"""
-        
-        visualizations = {}
-        
-        # 1. Severity Distribution Pie Chart
-        if analysis_data.get('by_severity'):
-            severity_fig = px.pie(
-                values=list(analysis_data['by_severity'].values()),
-                names=list(analysis_data['by_severity'].keys()),
-                title="Conflicts by Severity Level",
-                color_discrete_map={
-                    'high': '#ff4444',
-                    'medium': '#ffaa44',
-                    'low': '#44ff44',
-                    'unknown': '#888888'
-                }
-            )
-            severity_fig.update_traces(textposition='inside', textinfo='percent+label')
-            visualizations['severity_distribution'] = severity_fig
-        
-        # 2. Java Version Conflicts Bar Chart
-        if analysis_data.get('by_java_version'):
-            version_fig = px.bar(
-                x=list(analysis_data['by_java_version'].keys()),
-                y=list(analysis_data['by_java_version'].values()),
-                title="Conflicts by Java Version",
-                labels={'x': 'Java Version', 'y': 'Number of Conflicts'},
-                color=list(analysis_data['by_java_version'].values()),
-                color_continuous_scale='Reds'
-            )
-            version_fig.update_layout(showlegend=False)
-            visualizations['version_conflicts'] = version_fig
-        
-        # 3. Conflict Types Horizontal Bar Chart
-        if analysis_data.get('by_type'):
-            type_fig = px.bar(
-                x=list(analysis_data['by_type'].values()),
-                y=list(analysis_data['by_type'].keys()),
-                orientation='h',
-                title="Conflicts by Type",
-                labels={'x': 'Number of Conflicts', 'y': 'Conflict Type'},
-                color=list(analysis_data['by_type'].values()),
-                color_continuous_scale='Blues'
-            )
-            visualizations['conflict_types'] = type_fig
-        
-        # 4. Timeline Analysis
-        if analysis_data.get('timeline_data'):
-            timeline_df = pd.DataFrame(analysis_data['timeline_data'])
-            timeline_df['date'] = pd.to_datetime(timeline_df['date'])
-            timeline_df['month'] = timeline_df['date'].dt.to_period('M')
-            
-            monthly_counts = timeline_df.groupby(['month', 'severity']).size().reset_index(name='count')
-            monthly_counts['month'] = monthly_counts['month'].astype(str)
-            
-            timeline_fig = px.bar(
-                monthly_counts,
-                x='month',
-                y='count',
-                color='severity',
-                title="Conflict Detection Timeline",
-                labels={'month': 'Month', 'count': 'Number of Conflicts'},
-                color_discrete_map={
-                    'high': '#ff4444',
-                    'medium': '#ffaa44',
-                    'low': '#44ff44',
-                    'unknown': '#888888'
-                }
-            )
-            visualizations['timeline'] = timeline_fig
-        
-        # 5. Affected Scenarios Treemap
-        if analysis_data.get('by_affected_scenarios'):
-            scenarios_fig = px.treemap(
-                names=list(analysis_data['by_affected_scenarios'].keys()),
-                values=list(analysis_data['by_affected_scenarios'].values()),
-                title="Affected Scenarios Distribution"
-            )
-            visualizations['affected_scenarios'] = scenarios_fig
-        
-        # 6. Network Graph (using networkx and plotly)
-        if analysis_data.get('network_data', {}).get('nodes'):
-            G = nx.Graph()
-            
-            # Add nodes
-            for node in analysis_data['network_data']['nodes']:
-                G.add_node(node['id'], label=node['label'])
-            
-            # Add edges
-            for edge in analysis_data['network_data']['edges']:
-                G.add_edge(edge['from'], edge['to'], label=edge['label'])
-            
-            # Create layout
-            pos = nx.spring_layout(G, k=3, iterations=50)
-            
-            # Extract node and edge traces
-            node_trace = go.Scatter(
-                x=[pos[node][0] for node in G.nodes()],
-                y=[pos[node][1] for node in G.nodes()],
-                mode='markers+text',
-                text=[G.nodes[node]['label'] for node in G.nodes()],
-                textposition="middle center",
-                marker=dict(size=30, color='lightblue', line=dict(width=2, color='black')),
-                name='Java Versions'
-            )
-            
-            edge_traces = []
-            for edge in G.edges():
-                x0, y0 = pos[edge[0]]
-                x1, y1 = pos[edge[1]]
-                edge_traces.append(
-                    go.Scatter(
-                        x=[x0, x1, None],
-                        y=[y0, y1, None],
-                        mode='lines',
-                        line=dict(width=2, color='red'),
-                        showlegend=False
-                    )
-                )
-            
-            network_fig = go.Figure(data=[node_trace] + edge_traces)
-            network_fig.update_layout(
-                title="Java Version Conflict Network",
-                showlegend=True,
-                hovermode='closest',
-                margin=dict(b=20,l=5,r=5,t=40),
-                annotations=[ dict(
-                    text="Network showing conflicts between Java versions",
-                    showarrow=False,
-                    xref="paper", yref="paper",
-                    x=0.005, y=-0.002,
-                    xanchor='left', yanchor='bottom',
-                    font=dict(color='gray', size=12)
-                )],
-                xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
-            )
-            visualizations['network_graph'] = network_fig
-        
-        return visualizations
-
-    def export_analysis_report(self, format_type: str = 'json') -> str:
-        """Export analysis report in various formats"""
-        
-        analysis = self.generate_conflict_analysis_report()
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        if format_type.lower() == 'json':
-            filename = f"conflict_analysis_{timestamp}.json"
-            filepath = os.path.join(self.config.project_path, 'reports', filename)
-            
-            os.makedirs(os.path.dirname(filepath), exist_ok=True)
-            
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(analysis, f, indent=2, ensure_ascii=False, default=str)
-            
-            return filepath
-        
-        elif format_type.lower() == 'csv':
-            # Convert conflict data to CSV format
-            filename = f"conflict_analysis_{timestamp}.csv"
-            filepath = os.path.join(self.config.project_path, 'reports', filename)
-            
-            os.makedirs(os.path.dirname(filepath), exist_ok=True)
-            
-            # Prepare data for CSV
-            csv_data = []
-            conflicts = self.knowledge_base.get('conflicts', [])
-            
-            for i, conflict in enumerate(conflicts):
-                csv_data.append({
-                    'conflict_id': i,
-                    'type': conflict.get('type', ''),
-                    'severity': conflict.get('severity', ''),
-                    'rule1_version': conflict.get('rule1_version', ''),
-                    'rule2_version': conflict.get('rule2_version', ''),
-                    'description': conflict.get('description', ''),
-                    'affected_scenarios': ', '.join(conflict.get('affected_scenarios', [])),
-                    'resolution_needed': conflict.get('resolution_needed', ''),
-                    'detected_at': conflict.get('detected_at', '')
-                })
-            
-            df = pd.DataFrame(csv_data)
-            df.to_csv(filepath, index=False)
-            
-            return filepath
-        
-        else:
-            raise ValueError(f"Unsupported format: {format_type}")
-
-    def get_conversation_history(self, limit: int = 10) -> List[Dict]:
-        """Get recent conversation history"""
-        return self.conversation_history[-limit:] if self.conversation_history else []
-
-    def clear_conversation_history(self):
-        """Clear conversation history"""
-        self.conversation_history = []
-
-    def get_knowledge_base_stats(self) -> Dict[str, Any]:
-        """Get statistics about the knowledge base"""
-        stats = {
-            'total_documents': 0,
-            'by_type': {},
-            'java_versions': set(),
-            'total_conflicts': 0,
-            'high_severity_conflicts': 0,
-            'last_updated': None
-        }
-        
-        # Count documents in embeddings cache
-        if self.embeddings_cache and 'documents' in self.embeddings_cache:
-            documents = self.embeddings_cache['documents']
-            stats['total_documents'] = len(documents)
-            
-            for doc in documents:
-                doc_type = doc.get('type', 'unknown')
-                stats['by_type'][doc_type] = stats['by_type'].get(doc_type, 0) + 1
-                
-                if doc.get('java_version'):
-                    stats['java_versions'].add(str(doc['java_version']))
-        
-        # Count conflicts
-        conflicts = self.knowledge_base.get('conflicts', [])
-        detailed_conflicts = self.knowledge_base.get('conflict_report', {}).get('detailed_conflicts', [])
-        
-        all_conflicts = conflicts + detailed_conflicts
-        stats['total_conflicts'] = len(all_conflicts)
-        stats['high_severity_conflicts'] = sum(1 for c in all_conflicts if c.get('severity') == 'high')
-        
-        # Get last updated time
-        if self.embeddings_cache and 'created_at' in self.embeddings_cache:
-            stats['last_updated'] = self.embeddings_cache['created_at']
-        
-        stats['java_versions'] = list(stats['java_versions'])
-        
-        return stats
-
-    def search_knowledge_base(self, search_term: str, filters: Dict[str, Any] = None) -> List[Dict]:
-        """Search knowledge base with optional filters"""
-        if not self.embeddings_cache or 'documents' not in self.embeddings_cache:
-            return []
-        
-        results = []
-        documents = self.embeddings_cache['documents']
-        search_term_lower = search_term.lower()
-        
-        for doc in documents:
-            # Text search
-            if search_term_lower in doc.get('text', '').lower():
-                match_score = doc.get('text', '').lower().count(search_term_lower)
-                
-                # Apply filters if provided
-                if filters:
-                    if 'doc_type' in filters and doc.get('type') != filters['doc_type']:
-                        continue
-                    if 'java_version' in filters and str(doc.get('java_version')) != str(filters['java_version']):
-                        continue
-                    if 'severity' in filters and doc.get('severity') != filters['severity']:
-                        continue
-                
-                doc_result = doc.copy()
-                doc_result['match_score'] = match_score
-                results.append(doc_result)
-        
-        # Sort by match score
-        results.sort(key=lambda x: x['match_score'], reverse=True)
-        
-        return results
+        return "\n".join(context_parts)
 
 # =============================================================================
 # STREAMLIT APPLICATION
@@ -1427,11 +1579,6 @@ def initialize_agent():
         try:
             # Get API key from env
             api_key = os.getenv('OPENROUTER_API_KEY')
-            
-            if not api_key:
-                st.error("❌ OPENROUTER_API_KEY not found in environment variables")
-                st.session_state.agent = None
-                return
             
             # Initialize configuration
             config = AgentConfig()
@@ -1446,210 +1593,6 @@ def initialize_agent():
             st.error(f"❌ Failed to initialize agent: {str(e)}")
             st.session_state.agent = None
 
-def display_knowledge_base_stats():
-    """Display knowledge base statistics in sidebar"""
-    if not st.session_state.agent:
-        return
-    
-    try:
-        # Try multiple approaches to get stats
-        stats = st.session_state.agent.get_knowledge_base_stats()
-        
-        # Also try to access knowledge base directly
-        kb = getattr(st.session_state.agent, 'knowledge_base', {})
-        
-        # Helper function to safely extract metric values
-        def safe_metric_value(value, default=0):
-            if isinstance(value, (int, float)):
-                return value
-            elif isinstance(value, str):
-                try:
-                    return int(value)
-                except:
-                    return value
-            elif isinstance(value, list):
-                return len(value)
-            elif isinstance(value, dict):
-                return len(value)
-            else:
-                return default
-        
-        # Try to get more accurate counts
-        total_docs = safe_metric_value(stats.get('total_documents', len(kb.get('documents', []))))
-        st.metric("Total Documents", total_docs)
-        
-        # Check for chunks in different possible locations
-        total_chunks = 0
-        chunk_sources = [
-            stats.get('total_chunks', 0),
-            len(kb.get('chunks', [])),
-            len(kb.get('processed_rules', [])),
-            sum(len(doc.get('chunks', [])) for doc in kb.get('documents', []) if isinstance(doc, dict))
-        ]
-        total_chunks = max(chunk_sources)
-        st.metric("Total Chunks", total_chunks)
-        
-        # Check for conflicts in different possible locations
-        conflicts = 0
-        conflict_sources = [
-            stats.get('conflict_count', 0),
-            stats.get('conflicts', 0),
-            len(kb.get('conflicts', [])),
-            kb.get('conflicts', {}).get('total_conflicts', 0) if isinstance(kb.get('conflicts'), dict) else 0
-        ]
-        conflicts = max(conflict_sources)
-        
-        # If still 0, try to count conflicts from other possible structures
-        if conflicts == 0:
-            # Check if conflicts are stored differently
-            if 'conflict_analysis' in kb:
-                conflicts = len(kb['conflict_analysis'])
-            elif 'detected_conflicts' in kb:
-                conflicts = len(kb['detected_conflicts'])
-            elif hasattr(st.session_state.agent, 'conflicts'):
-                conflicts = len(getattr(st.session_state.agent, 'conflicts', []))
-        
-        st.metric("Detected Conflicts", conflicts)
-        
-        # Handle Java versions specially
-        java_versions = stats.get('java_versions', kb.get('java_versions', []))
-        
-        # Filter and clean Java versions
-        valid_versions = []
-        if isinstance(java_versions, list):
-            for version in java_versions:
-                # Try to extract valid Java version numbers
-                if isinstance(version, (int, float)):
-                    if 1 <= version <= 50:  # Reasonable Java version range
-                        valid_versions.append(int(version))
-                elif isinstance(version, str):
-                    # Try to extract numeric version from string
-                    # Handle formats like "Java 17", "JDK-11", "1.8", etc.
-                    import re
-                    # Look for numeric patterns
-                    numeric_matches = re.findall(r'\b(\d+(?:\.\d+)?)\b', version)
-                    for match in numeric_matches:
-                        try:
-                            num_version = float(match)
-                            # Convert 1.x format to x (e.g., 1.8 -> 8)
-                            if 1.0 <= num_version < 2.0:
-                                num_version = int((num_version - 1) * 10 + 1)
-                            elif num_version >= 8:  # Modern Java versions
-                                num_version = int(num_version)
-                            else:
-                                continue
-                            
-                            if 1 <= num_version <= 50:  # Reasonable range
-                                valid_versions.append(num_version)
-                                break  # Take first valid match
-                        except (ValueError, TypeError):
-                            continue
-        
-        # Remove duplicates and sort
-        valid_versions = sorted(list(set(valid_versions)))
-        
-        if valid_versions:
-            st.metric("Java Versions", len(valid_versions))
-            # Show versions in a compact format
-            versions_str = ', '.join(str(v) for v in valid_versions[:8])
-            if len(valid_versions) > 8:
-                versions_str += f" +{len(valid_versions) - 8} more"
-            st.caption(f"Versions: {versions_str}")
-        else:
-            # Fallback if no valid versions found
-            original_count = len(java_versions) if isinstance(java_versions, list) else safe_metric_value(java_versions)
-            st.metric("Java Versions", original_count)
-            if isinstance(java_versions, list) and java_versions:
-                st.caption(f"Raw: {', '.join(str(v) for v in java_versions[:3])}{'...' if len(java_versions) > 3 else ''}")
-        
-        # Additional stats if available
-        specs_count = 0
-        if 'specifications' in stats:
-            specs_count = safe_metric_value(stats['specifications'])
-        elif 'specifications' in kb:
-            specs_count = safe_metric_value(kb['specifications'])
-        
-        if specs_count > 0:
-            st.metric("Specifications Loaded", specs_count)
-            
-    except Exception as e:
-        st.error(f"Error loading stats: {str(e)}")
-        
-        # Enhanced fallback - try to access agent attributes directly
-        try:
-            kb = getattr(st.session_state.agent, 'knowledge_base', {})
-            if kb:
-                st.metric("Status", "Loaded")
-                st.metric("KB Keys", len(kb.keys()))
-            else:
-                st.metric("Status", "Empty")
-        except:
-            st.metric("Status", "Error")
-
-def handle_query_response(prompt: str):
-    """Handle user query and generate response"""
-    try:
-        # Get agent response
-        response = st.session_state.agent.answer_query(prompt)
-        
-        # Create assistant message structure
-        assistant_message = {
-            "role": "assistant", 
-            "content": response.get('response', response.get('text_response', 'No response generated')),
-            "context_used": response.get('context_used', []),
-            "intent": response.get('intent', {}),
-            "visualizations": response.get('visualizations', []),
-            "interactive_plots": response.get('interactive_plots', {}),
-            "detailed_report": response.get('detailed_report', ''),
-            "metadata": response.get('metadata', {})
-        }
-        
-        return assistant_message
-        
-    except Exception as e:
-        st.error(f"Error processing query: {str(e)}")
-        return {
-            "role": "assistant",
-            "content": f"I encountered an error while processing your query: {str(e)}",
-            "error": True
-        }
-
-def display_response_components(response: Dict[str, Any]):
-    """Display various components of the agent response"""
-    
-    # Display main text response
-    st.markdown(response['content'])
-    
-    # Display context information if available
-    if response.get('context_used') and st.checkbox("Show Context Used", key=f"context_{id(response)}"):
-        with st.expander("📚 Retrieved Context"):
-            for i, context in enumerate(response['context_used']):
-                st.write(f"**Source {i+1}:** {context.get('source', 'Unknown')}")
-                st.write(f"**Relevance:** {context.get('similarity', 'N/A')}")
-                st.write(f"**Content:** {context.get('content', '')[:200]}...")
-                st.divider()
-    
-    # Display visualizations
-    if response.get('visualizations'):
-        st.subheader("📊 Visualizations")
-        cols = st.columns(min(len(response['visualizations']), 3))
-        for i, img_b64 in enumerate(response['visualizations']):
-            with cols[i % 3]:
-                st.image(f"data:image/png;base64,{img_b64}")
-    
-    # Display interactive plots
-    if response.get('interactive_plots'):
-        st.subheader("📈 Interactive Charts")
-        for plot_name, fig in response['interactive_plots'].items():
-            # Create unique key for each plot
-            unique_key = f"plotly_chart_{id(response)}_{plot_name}"
-            st.plotly_chart(fig, use_container_width=True, key=unique_key)
-    
-    # Display detailed report
-    if response.get('detailed_report'):
-        with st.expander("📋 View Detailed Report"):
-            st.markdown(response['detailed_report'])
-
 def main():
     """Main Streamlit application"""
     st.set_page_config(
@@ -1659,120 +1602,369 @@ def main():
         initial_sidebar_state="expanded"
     )
     
-    # Custom CSS
+    # Custom CSS for beautiful UI
     st.markdown("""
     <style>
+    /* Main theme colors */
+    :root {
+        --primary-color: #1f77b4;
+        --secondary-color: #ff7f0e;
+        --success-color: #2ca02c;
+        --warning-color: #d62728;
+        --info-color: #17a2b8;
+        --light-bg: #f8f9fa;
+        --dark-bg: #343a40;
+    }
+    
+    /* Header styling */
     .main-header {
         text-align: center;
-        color: #1f77b4;
-        font-size: 2.5rem;
+        background: linear-gradient(90deg, #1f77b4, #ff7f0e);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-size: 3rem;
+        font-weight: bold;
+        margin-bottom: 1rem;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .subtitle {
+        text-align: center;
+        color: #6c757d;
+        font-size: 1.2rem;
         margin-bottom: 2rem;
+        font-style: italic;
     }
+    
+    /* Chat message styling */
     .chat-message {
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 1rem 0;
-    }
-    .user-message {
-        background-color: #e3f2fd;
-        border-left: 4px solid #2196f3;
-    }
-    .agent-message {
-        background-color: #f3e5f5;
-        border-left: 4px solid #9c27b0;
-    }
-    .statistics-container {
-        background-color: #f8f9fa;
         padding: 1.5rem;
-        border-radius: 0.5rem;
+        border-radius: 15px;
+        margin: 1rem 0;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        transition: transform 0.2s ease;
+    }
+    
+    .chat-message:hover {
+        transform: translateY(-2px);
+    }
+    
+    .user-message {
+        background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+        border-left: 5px solid #2196f3;
+    }
+    
+    .agent-message {
+        background: linear-gradient(135deg, #f3e5f5, #e1bee7);
+        border-left: 5px solid #9c27b0;
+    }
+    
+    /* Statistics container */
+    .statistics-container {
+        background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+        padding: 2rem;
+        border-radius: 15px;
+        margin: 1rem 0;
+        border: 1px solid #dee2e6;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    /* Metric cards */
+    .metric-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 10px;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        margin: 0.5rem;
+        transition: transform 0.2s ease;
+    }
+    
+    .metric-card:hover {
+        transform: scale(1.05);
+    }
+    
+    .metric-value {
+        font-size: 2rem;
+        font-weight: bold;
+        color: var(--primary-color);
+    }
+    
+    .metric-label {
+        color: #6c757d;
+        font-size: 0.9rem;
+        margin-top: 0.5rem;
+    }
+    
+    /* Sidebar styling */
+    .sidebar-header {
+        background: linear-gradient(90deg, #1f77b4, #ff7f0e);
+        color: white;
+        padding: 1rem;
+        border-radius: 10px;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+    
+    /* Button styling */
+    .stButton > button {
+        background: linear-gradient(90deg, #1f77b4, #ff7f0e);
+        color: white;
+        border: none;
+        border-radius: 25px;
+        padding: 0.5rem 1.5rem;
+        font-weight: bold;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+    
+    /* Info boxes */
+    .info-box {
+        background: linear-gradient(135deg, #d4edda, #c3e6cb);
+        border: 1px solid #c3e6cb;
+        border-radius: 10px;
+        padding: 1rem;
         margin: 1rem 0;
     }
-    .metric-container {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    
+    /* Loading animation */
+    .loading-animation {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 2rem;
+    }
+    
+    /* Responsive design */
+    @media (max-width: 768px) {
+        .main-header {
+            font-size: 2rem;
+        }
+        
+        .chat-message {
+            padding: 1rem;
+        }
+    }
+    
+    /* Plotly chart containers */
+    .plotly-chart-container {
+        background: white;
+        border-radius: 10px;
         padding: 1rem;
-        border-radius: 0.5rem;
-        color: white;
-        margin: 0.5rem 0;
+        margin: 1rem 0;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        background: linear-gradient(90deg, #f8f9fa, #e9ecef);
+        border-radius: 10px;
+        font-weight: bold;
     }
     </style>
     """, unsafe_allow_html=True)
     
     # Header
     st.markdown('<h1 class="main-header">☕ SpecSentinel: Java Specification Agent</h1>', unsafe_allow_html=True)
-    st.markdown("*Intelligent analysis of Java Language Specifications with conflict detection and reporting*")
+    st.markdown('<p class="subtitle">🔍 Intelligent analysis of Java Language Specifications with advanced conflict detection and interactive reporting</p>', unsafe_allow_html=True)
     
     # Initialize agent
     initialize_agent()
     
     if not st.session_state.agent:
-        st.error("Agent not initialized. Please check your configuration and API key.")
-        st.info("Make sure OPENROUTER_API_KEY is set in your environment variables.")
+        st.error("❌ Agent not initialized. Please check your configuration and try again.")
+        st.info("💡 Make sure your OpenRouter API key is set in the environment variables.")
         return
     
     # Sidebar
     with st.sidebar:
-        st.header("📊 Agent Status")
+        st.markdown('<div class="sidebar-header"><h2>📊 Agent Dashboard</h2></div>', unsafe_allow_html=True)
         
         # Knowledge base status
-        display_knowledge_base_stats()
+        kb = st.session_state.agent.knowledge_base
         
-        st.header("🎯 Quick Actions")
+        # Safe counts with better error handling
+        try:
+            processed_rules_count = len(kb.get('processed_rules', []))
+            conflicts = kb.get('conflicts', [])
+            conflict_count = (
+                conflicts.get('total_conflicts', 0) if isinstance(conflicts, dict)
+                else len(conflicts) if isinstance(conflicts, list)
+                else 0
+            )
+            specs_count = len(kb.get('specifications', {}))
+            kb_entries_count = len(kb.get('knowledge_base', {}))
+        except Exception as e:
+            st.error(f"Error calculating metrics: {e}")
+            processed_rules_count = conflict_count = specs_count = kb_entries_count = 0
+
+        # Display metrics in a grid
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("📋 Rules", processed_rules_count, help="Total processed rules")
+            st.metric("📚 Specifications", specs_count, help="Loaded specifications")
+        with col2:
+            st.metric("⚠️ Conflicts", conflict_count, help="Detected conflicts")
+            st.metric("🧠 KB Entries", kb_entries_count, help="Knowledge base entries")
+        
+        st.markdown("---")
+        
+        # Quick Actions
+        st.markdown("### 🎯 Quick Actions")
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("📈 Statistics", use_container_width=True):
+            if st.button("📈 Statistics", help="Generate comprehensive statistics"):
                 st.session_state.show_stats = True
+            
+            if st.button("🔄 Clear Chat", help="Clear conversation history"):
+                st.session_state.messages = []
                 st.rerun()
         
         with col2:
-            if st.button("📋 Report", use_container_width=True):
+            if st.button("📋 Report", help="Generate detailed analysis report"):
                 st.session_state.show_report = True
-                st.rerun()
+            
+            if st.button("💾 Export", help="Export conversation history"):
+                if 'messages' in st.session_state and st.session_state.messages:
+                    export_data = {
+                        'timestamp': datetime.now().isoformat(),
+                        'messages': st.session_state.messages,
+                        'agent_info': {
+                            'version': '2.0',
+                            'knowledge_base_stats': {
+                                'rules': processed_rules_count,
+                                'conflicts': conflict_count,
+                                'specifications': specs_count
+                            }
+                        }
+                    }
+                    st.download_button(
+                        "💾 Download Chat",
+                        data=json.dumps(export_data, indent=2),
+                        file_name=f"specsentinel_chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                        mime="application/json"
+                    )
         
-        if st.button("🔍 Search KB", use_container_width=True):
-            st.session_state.show_search = True
-            st.rerun()
+        st.markdown("---")
         
-        if st.button("🔄 Clear Chat", use_container_width=True):
-            st.session_state.messages = []
-            st.rerun()
+        # Agent Status
+        st.markdown("### 🤖 Agent Status")
         
-        # Export options
-        st.header("📤 Export")
-        export_format = st.selectbox("Format", ["json", "markdown", "html"])
-        if st.button("Export Report", use_container_width=True):
-            try:
-                exported_data = st.session_state.agent.export_analysis_report(export_format)
-                st.download_button(
-                    label=f"Download {export_format.upper()}",
-                    data=exported_data,
-                    file_name=f"java_spec_analysis.{export_format}",
-                    mime=f"application/{export_format}"
-                )
-            except Exception as e:
-                st.error(f"Export failed: {str(e)}")
+        # Check embedding model status
+        embedding_status = "✅ Active" if st.session_state.agent.embedding_model else "⚠️ Fallback Mode"
+        st.info(f"**Embedding Model:** {embedding_status}")
         
-        st.header("ℹ️ About")
-        st.info("""
-        This agent analyzes Java Language Specifications to:
-        - Detect conflicts between versions
-        - Generate comprehensive reports
-        - Provide intelligent Q&A
-        - Create visualizations
-        - Search knowledge base
-        """)
+        # Check knowledge base status
+        kb_status = "✅ Loaded" if kb else "❌ Not Available"
+        st.info(f"**Knowledge Base:** {kb_status}")
+        
+        # API status
+        api_status = "✅ Configured" if st.session_state.agent.api_key else "❌ Missing"
+        st.info(f"**API Connection:** {api_status}")
+        
+        st.markdown("---")
+        
+        # Help section
+        with st.expander("ℹ️ About SpecSentinel", expanded=False):
+            st.markdown("""
+            **SpecSentinel** is an advanced AI agent that analyzes Java Language Specifications to:
+            
+            🔍 **Detect Conflicts** between different Java versions
+            
+            📊 **Generate Reports** with comprehensive statistics and visualizations
+            
+            💬 **Provide Q&A** with intelligent context-aware responses
+            
+            📈 **Create Visualizations** including interactive charts and graphs
+            
+            🎯 **Offer Guidance** for migration and best practices
+            
+            ---
+            
+            **Powered by:**
+            - OpenRouter API for LLM capabilities
+            - Sentence Transformers for embeddings
+            - Plotly for interactive visualizations
+            - Streamlit for the user interface
+            """)
     
     # Initialize session state for messages
     if "messages" not in st.session_state:
         st.session_state.messages = []
     
+    # Welcome message for new users
+    if not st.session_state.messages:
+        welcome_message = {
+            "role": "assistant",
+            "content": """👋 **Welcome to SpecSentinel!**
+
+I'm ready to help you analyze Java Language Specifications. Here are some things you can try:
+
+• **"Show me statistics"** - Get comprehensive analysis with visualizations
+• **"What conflicts exist between Java 8 and Java 11?"** - Specific conflict analysis
+• **"Generate a detailed report"** - Full analysis report
+• **"Explain exception handling rules"** - Specification queries
+• **"Help"** - See all available commands
+
+What would you like to explore first? 🚀"""
+        }
+        st.session_state.messages.append(welcome_message)
+    
     # Display chat messages
-    for message in st.session_state.messages:
+    for i, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
-            display_response_components(message)
+            st.markdown(message["content"])
+            
+            # Display visualizations if present
+            if "visualizations" in message and message["visualizations"]:
+                st.markdown("### 📊 Statistical Visualizations")
+                
+                # Create columns for multiple visualizations
+                num_viz = len(message["visualizations"])
+                if num_viz == 1:
+                    st.image(f"data:image/png;base64,{message['visualizations'][0]}", use_container_width=True)
+                elif num_viz == 2:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.image(f"data:image/png;base64,{message['visualizations'][0]}", use_container_width=True)
+                    with col2:
+                        st.image(f"data:image/png;base64,{message['visualizations'][1]}", use_container_width=True)
+                else:
+                    cols = st.columns(min(num_viz, 3))
+                    for idx, img_b64 in enumerate(message["visualizations"]):
+                        with cols[idx % 3]:
+                            st.image(f"data:image/png;base64,{img_b64}", use_container_width=True)
+            
+            # Display interactive plots if present
+            if "interactive_plots" in message and message["interactive_plots"]:
+                st.markdown("### 📈 Interactive Analysis Charts")
+                
+                # Create tabs for different plot types
+                plot_names = list(message["interactive_plots"].keys())
+                if len(plot_names) > 1:
+                    tabs = st.tabs([name.replace('_', ' ').title() for name in plot_names])
+                    for tab, (plot_name, fig) in zip(tabs, message["interactive_plots"].items()):
+                        with tab:
+                            unique_key = f"plotly_chart_{i}_{plot_name}"
+                            st.plotly_chart(fig, use_container_width=True, key=unique_key)
+                else:
+                    for plot_name, fig in message["interactive_plots"].items():
+                        unique_key = f"plotly_chart_{i}_{plot_name}"
+                        st.plotly_chart(fig, use_container_width=True, key=unique_key)
+            
+            # Display detailed report if present
+            if "detailed_report" in message and message["detailed_report"]:
+                with st.expander("📋 View Detailed Analysis Report", expanded=False):
+                    st.markdown(message["detailed_report"])
     
     # Chat input
-    if prompt := st.chat_input("Ask me about Java specifications, conflicts, or request statistics..."):
+    if prompt := st.chat_input("💬 Ask me about Java specifications, conflicts, or request statistics and visualizations..."):
         # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt})
         
@@ -1782,11 +1974,58 @@ def main():
         
         # Get agent response
         with st.chat_message("assistant"):
-            with st.spinner("🤔 Analyzing your query..."):
-                assistant_message = handle_query_response(prompt)
+            with st.spinner("🤔 Analyzing your query and generating response..."):
+                response = st.session_state.agent.answer_query(prompt)
             
-            # Display response components
-            display_response_components(assistant_message)
+            # Display text response
+            st.markdown(response['text_response'])
+            
+            # Store complete response for display
+            assistant_message = {
+                "role": "assistant", 
+                "content": response['text_response'],
+                "visualizations": response.get('visualizations', []),
+                "interactive_plots": response.get('interactive_plots', {}),
+                "detailed_report": response.get('detailed_report', '')
+            }
+            
+            # Display visualizations
+            if response.get('visualizations'):
+                st.markdown("### 📊 Statistical Visualizations")
+                
+                num_viz = len(response['visualizations'])
+                if num_viz == 1:
+                    st.image(f"data:image/png;base64,{response['visualizations'][0]}", use_container_width=True)
+                elif num_viz == 2:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.image(f"data:image/png;base64,{response['visualizations'][0]}", use_container_width=True)
+                    with col2:
+                        st.image(f"data:image/png;base64,{response['visualizations'][1]}", use_container_width=True)
+                else:
+                    cols = st.columns(min(num_viz, 3))
+                    for idx, img_b64 in enumerate(response['visualizations']):
+                        with cols[idx % 3]:
+                            st.image(f"data:image/png;base64,{img_b64}", use_container_width=True)
+            
+            # Display interactive plots
+            if response.get('interactive_plots'):
+                st.markdown("### 📈 Interactive Analysis Charts")
+                
+                plot_names = list(response['interactive_plots'].keys())
+                if len(plot_names) > 1:
+                    tabs = st.tabs([name.replace('_', ' ').title() for name in plot_names])
+                    for tab, (plot_name, fig) in zip(tabs, response['interactive_plots'].items()):
+                        with tab:
+                            st.plotly_chart(fig, use_container_width=True)
+                else:
+                    for plot_name, fig in response['interactive_plots'].items():
+                        st.plotly_chart(fig, use_container_width=True)
+            
+            # Display detailed report
+            if response.get('detailed_report'):
+                with st.expander("📋 View Detailed Analysis Report", expanded=False):
+                    st.markdown(response['detailed_report'])
             
             # Add assistant message to chat history
             st.session_state.messages.append(assistant_message)
@@ -1796,115 +2035,82 @@ def main():
         st.session_state.show_stats = False
         
         with st.chat_message("assistant"):
-            with st.spinner("📊 Generating statistics..."):
-                try:
-                    # Generate comprehensive statistics
-                    response = st.session_state.agent.answer_query(
-                        "Show me comprehensive statistics and visualizations about the Java specifications"
-                    )
-                    assistant_message = {
-                        "role": "assistant",
-                        "content": response.get('response', response.get('text_response', 'Statistics generated')),
-                        "visualizations": response.get('visualizations', []),
-                        "interactive_plots": response.get('interactive_plots', {}),
-                        "detailed_report": response.get('detailed_report', '')
-                    }
-                    
-                    # Display components
-                    display_response_components(assistant_message)
-                    
-                    # Add to message history
-                    st.session_state.messages.append(assistant_message)
-                    
-                except Exception as e:
-                    st.error(f"Error generating statistics: {str(e)}")
+            with st.spinner("📊 Generating comprehensive statistics and visualizations..."):
+                response = st.session_state.agent.answer_query("Show me comprehensive statistics and visualizations with interactive charts")
+            
+            st.markdown(response['text_response'])
+            
+            # Display all components
+            if response.get('visualizations'):
+                st.markdown("### 📊 Statistical Visualizations")
+                cols = st.columns(min(len(response['visualizations']), 3))
+                for i, img_b64 in enumerate(response['visualizations']):
+                    with cols[i % 3]:
+                        st.image(f"data:image/png;base64,{img_b64}", use_container_width=True)
+            
+            if response.get('interactive_plots'):
+                st.markdown("### 📈 Interactive Analysis Dashboard")
+                plot_names = list(response['interactive_plots'].keys())
+                if len(plot_names) > 1:
+                    tabs = st.tabs([name.replace('_', ' ').title() for name in plot_names])
+                    for tab, (plot_name, fig) in zip(tabs, response['interactive_plots'].items()):
+                        with tab:
+                            st.plotly_chart(fig, use_container_width=True)
+                else:
+                    for plot_name, fig in response['interactive_plots'].items():
+                        st.plotly_chart(fig, use_container_width=True)
+            
+            if response.get('detailed_report'):
+                with st.expander("📋 Full Statistical Analysis Report", expanded=True):
+                    st.markdown(response['detailed_report'])
+            
+            # Add to message history
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": response['text_response'],
+                "visualizations": response.get('visualizations', []),
+                "interactive_plots": response.get('interactive_plots', {}),
+                "detailed_report": response.get('detailed_report', '')
+            })
     
     if st.session_state.get('show_report', False):
         st.session_state.show_report = False
         
         with st.chat_message("assistant"):
-            with st.spinner("📋 Generating detailed report..."):
-                try:
-                    # Generate conflict analysis report
-                    report_data = st.session_state.agent.generate_conflict_analysis_report()
-                    
-                    # Format the report
-                    report_content = "## 📋 Comprehensive Conflict Analysis Report\n\n"
-                    
-                    if isinstance(report_data, dict):
-                        if 'summary' in report_data:
-                            report_content += f"### Summary\n{report_data['summary']}\n\n"
-                        
-                        if 'conflicts' in report_data:
-                            report_content += f"### Detected Conflicts\n"
-                            conflicts = report_data['conflicts']
-                            if isinstance(conflicts, list):
-                                for i, conflict in enumerate(conflicts, 1):
-                                    report_content += f"**Conflict {i}:** {conflict}\n"
-                            else:
-                                report_content += f"{conflicts}\n"
-                            report_content += "\n"
-                        
-                        if 'recommendations' in report_data:
-                            report_content += f"### Recommendations\n{report_data['recommendations']}\n\n"
-                    else:
-                        report_content += str(report_data)
-                    
-                    st.markdown(report_content)
-                    
-                    # Add to message history
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": report_content
-                    })
-                    
-                except Exception as e:
-                    st.error(f"Error generating report: {str(e)}")
-    
-    if st.session_state.get('show_search', False):
-        st.session_state.show_search = False
-        
-        # Knowledge base search interface
-        st.subheader("🔍 Knowledge Base Search")
-        
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            search_term = st.text_input("Search term:", key="kb_search")
-        with col2:
-            search_btn = st.button("Search", key="search_submit")
-        
-        if search_btn and search_term:
-            try:
-                with st.spinner("Searching knowledge base..."):
-                    results = st.session_state.agent.search_knowledge_base(search_term)
-                
-                if results:
-                    st.success(f"Found {len(results)} results")
-                    for i, result in enumerate(results):
-                        with st.expander(f"Result {i+1}: {result.get('source', 'Unknown source')}"):
-                            st.write(f"**Relevance:** {result.get('similarity', 'N/A')}")
-                            st.write(f"**Content:** {result.get('content', 'No content')}")
+            with st.spinner("📋 Generating comprehensive analysis report..."):
+                detailed_report = st.session_state.agent.generate_detailed_report()
+                stats_summary = st.session_state.agent.generate_statistics_summary()
+                interactive_plots = st.session_state.agent.create_interactive_plots()
+            
+            combined_response = f"""## 📋 Comprehensive Analysis Report
+
+{stats_summary}
+
+---
+
+{detailed_report}"""
+            
+            st.markdown(combined_response)
+            
+            # Display interactive plots
+            if interactive_plots:
+                st.markdown("### 📈 Supporting Visualizations")
+                plot_names = list(interactive_plots.keys())
+                if len(plot_names) > 1:
+                    tabs = st.tabs([name.replace('_', ' ').title() for name in plot_names])
+                    for tab, (plot_name, fig) in zip(tabs, interactive_plots.items()):
+                        with tab:
+                            st.plotly_chart(fig, use_container_width=True)
                 else:
-                    st.info("No results found for your search term.")
-                    
-            except Exception as e:
-                st.error(f"Search failed: {str(e)}")
-    
-    # Conversation history management
-    if len(st.session_state.messages) > 0:
-        with st.sidebar:
-            st.header("💬 Conversation")
-            if st.button("📥 Export Chat"):
-                chat_data = {
-                    "timestamp": datetime.now().isoformat(),
-                    "messages": st.session_state.messages
-                }
-                st.download_button(
-                    label="Download Chat History",
-                    data=json.dumps(chat_data, indent=2),
-                    file_name="chat_history.json",
-                    mime="application/json"
-                )
+                    for plot_name, fig in interactive_plots.items():
+                        st.plotly_chart(fig, use_container_width=True)
+            
+            # Add to message history
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": combined_response,
+                "interactive_plots": interactive_plots
+            })
 
 if __name__ == "__main__":
     main()
