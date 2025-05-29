@@ -1,10 +1,10 @@
 {
   "analysis_info": {
     "mode": "full",
-    "start_time": "2025-05-28T05:41:05.663560",
-    "end_time": "2025-05-28T05:41:08.605068",
-    "duration_seconds": 2.941508,
-    "duration_formatted": "0:00:02.941508"
+    "start_time": "2025-05-29T11:56:31.209828",
+    "end_time": "2025-05-29T11:56:33.755986",
+    "duration_seconds": 2.546158,
+    "duration_formatted": "0:00:02.546158"
   },
   "data_statistics": {
     "specifications_downloaded": 1,
@@ -55,25 +55,25 @@
     ]
   },
   "conflict_analysis": {
-    "total_conflicts": 44,
+    "total_conflicts": 56,
     "by_severity": {
-      "LOW": 15,
-      "MEDIUM": 29
+      "LOW": 17,
+      "MEDIUM": 39
     },
     "by_type": {
-      "VERSION_CHANGE": 42,
-      "OVERLAP": 1,
+      "VERSION_CHANGE": 53,
+      "SCOPE_CONFLICT": 2,
       "CONTRADICTION": 1
     },
     "critical_conflicts": []
   },
   "recommendations": [
-    "📋 Review Java 8 vs Java 11 compatibility - 7 conflicts detected",
-    "📋 Review Java 8 vs Java 17 compatibility - 12 conflicts detected",
-    "📋 Review Java 8 vs Java 21 compatibility - 14 conflicts detected",
-    "📋 Review Java 8 vs Java 24 compatibility - 11 conflicts detected",
+    "📋 Review Java 8 vs Java 11 compatibility - 8 conflicts detected",
+    "📋 Review Java 8 vs Java 17 compatibility - 15 conflicts detected",
+    "📋 Review Java 8 vs Java 21 compatibility - 18 conflicts detected",
+    "📋 Review Java 8 vs Java 24 compatibility - 15 conflicts detected",
     "⚠️ 1 direct contradictions need specification clarification",
-    "🔄 42 version changes require migration guidance"
+    "🔄 53 version changes require migration guidance"
   ],
   "files_generated": [
     "/content/drive/My Drive/SpecSentinel/data/all_specifications.json",

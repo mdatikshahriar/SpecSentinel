@@ -723,10 +723,10 @@ class JavaSpecAgent:
 
         # Use cost-effective models
         models = [
-            "openai/gpt-4o-mini",
-            "anthropic/claude-3.5-haiku",
             "deepseek/deepseek-chat-v3-0324:free",
             "meta-llama/llama-3.2-3b-instruct:free",
+            "google/gemma-2-9b-it:free",
+            "microsoft/phi-3-mini-128k-instruct:free"
         ]
 
         for model in models:
