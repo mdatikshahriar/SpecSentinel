@@ -1,0 +1,12 @@
+{
+  "text": "4.1. The Kinds of Types and Values There are two kinds of types in the Java programming language: primitive types ( §4.2 ) and reference types ( §4.3 ). There are, correspondingly, two kinds of data values that can be stored in variables, passed as arguments, returned by methods, and operated on: primitive values ( §4.2 ) and reference values ( §4.3 ). Type: PrimitiveType ReferenceType There is also a special null type , the type of the expression null ( §3.10.8 , §15.8.1 ), which has no name. Because the null type has no name, it is impossible to declare a variable of the null type or to cast to the null type. The null reference is the only possible value of an expression of null type. The null reference can always be assigned or cast to any reference type ( §5.2 , §5.3 , §5.5 ). In practice, the programmer can ignore the null type and just pretend that null is merely a special literal that can be of any reference type.",
+  "metadata": {
+    "java_version": "21",
+    "section_number": "4.5",
+    "section_title": "Chapter 4. Types, Values, and Variables",
+    "chapter_title": "Chapter 4. Types, Values, and Variables"
+  },
+  "url": "https://docs.oracle.com/javase/specs/jls/se21/html/jls-4.html#jls-4.5",
+  "section_name": "generics",
+  "downloaded_at": "2025-05-27T13:20:14.956057"
+}

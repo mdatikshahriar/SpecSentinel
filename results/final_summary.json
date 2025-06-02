@@ -1,0 +1,85 @@
+{
+  "analysis_info": {
+    "mode": "full",
+    "start_time": "2025-05-29T11:56:31.209828",
+    "end_time": "2025-05-29T11:56:33.755986",
+    "duration_seconds": 2.546158,
+    "duration_formatted": "0:00:02.546158"
+  },
+  "data_statistics": {
+    "specifications_downloaded": 1,
+    "raw_rules_extracted": 2109,
+    "rules_processed": 2109,
+    "processing_success_rate": "100.0%"
+  },
+  "rule_analysis": {
+    "category_distribution": {
+      "COMPILATION_RULES": 412,
+      "METHOD_RESOLUTION": 46,
+      "TYPE_COMPATIBILITY": 41,
+      "EXCEPTION_HANDLING": 207,
+      "ACCESS_CONTROL": 211,
+      "CONSTRUCTOR_RULES": 84,
+      "INHERITANCE_RULES": 550,
+      "GENERICS_RULES": 216,
+      "INTERFACE_RULES": 342
+    },
+    "version_distribution": {
+      "8": 365,
+      "11": 365,
+      "17": 461,
+      "21": 459,
+      "24": 459
+    },
+    "top_categories": [
+      [
+        "INHERITANCE_RULES",
+        550
+      ],
+      [
+        "COMPILATION_RULES",
+        412
+      ],
+      [
+        "INTERFACE_RULES",
+        342
+      ],
+      [
+        "GENERICS_RULES",
+        216
+      ],
+      [
+        "ACCESS_CONTROL",
+        211
+      ]
+    ]
+  },
+  "conflict_analysis": {
+    "total_conflicts": 56,
+    "by_severity": {
+      "LOW": 17,
+      "MEDIUM": 39
+    },
+    "by_type": {
+      "VERSION_CHANGE": 53,
+      "SCOPE_CONFLICT": 2,
+      "CONTRADICTION": 1
+    },
+    "critical_conflicts": []
+  },
+  "recommendations": [
+    "📋 Review Java 8 vs Java 11 compatibility - 8 conflicts detected",
+    "📋 Review Java 8 vs Java 17 compatibility - 15 conflicts detected",
+    "📋 Review Java 8 vs Java 21 compatibility - 18 conflicts detected",
+    "📋 Review Java 8 vs Java 24 compatibility - 15 conflicts detected",
+    "⚠️ 1 direct contradictions need specification clarification",
+    "🔄 53 version changes require migration guidance"
+  ],
+  "files_generated": [
+    "/content/drive/My Drive/SpecSentinel/data/all_specifications.json",
+    "/content/drive/My Drive/SpecSentinel/data/extracted_rules.json",
+    "/content/drive/My Drive/SpecSentinel/data/processed_rules.json",
+    "/content/drive/My Drive/SpecSentinel/results/conflict_report.json",
+    "/content/drive/My Drive/SpecSentinel/results/final_summary.json"
+  ]
+}

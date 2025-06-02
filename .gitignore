@@ -1,0 +1,12 @@
+### VS Code ###
+.vscode/
+
+### Logs ###
+logs/
+
+### custom ###
+.env
+.secrets
+.streamlit/
+embeddings_cache.pkl
+
